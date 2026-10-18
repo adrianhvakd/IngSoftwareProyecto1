@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="RE/MAX Potosí">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#003DA5"/>
+      <stop offset="0.55" stop-color="#002870"/>
+      <stop offset="1" stop-color="#0F172A"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <g opacity="0.14">
+    <ellipse cx="980" cy="240" rx="220" ry="300" fill="#DC1C2D"/>
+    <ellipse cx="1010" cy="430" rx="200" ry="220" fill="#fff"/>
+    <ellipse cx="990" cy="560" rx="210" ry="180" fill="#3B6FD4"/>
+  </g>
+  <text x="90" y="250" font-family="Montserrat, system-ui, sans-serif" font-size="96" font-weight="800" fill="#ffffff" letter-spacing="-2">RE<tspan fill="#DC1C2D">/</tspan>MAX</text>
+  <text x="92" y="330" font-family="Montserrat, system-ui, sans-serif" font-size="44" font-weight="700" fill="#9DB8E8" letter-spacing="14">POTOSÍ</text>
+  <text x="92" y="430" font-family="Inter, system-ui, sans-serif" font-size="34" font-weight="600" fill="#ffffff" opacity="0.92">Encuentra tu próximo hogar en Potosí</text>
+  <text x="92" y="486" font-family="Inter, system-ui, sans-serif" font-size="26" fill="#ffffff" opacity="0.7">Casas · Departamentos · Locales · Terrenos en alquiler</text>
+  <rect x="92" y="530" width="360" height="58" rx="29" fill="#DC1C2D"/>
+  <text x="272" y="568" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="24" font-weight="700" fill="#ffffff">remaxpotosi.bo</text>
+</svg>

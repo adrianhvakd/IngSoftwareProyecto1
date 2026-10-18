@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="RE/MAX Potosí">
+  <rect width="64" height="64" rx="14" fill="#003DA5"/>
+  <path d="M20 46V18h13.5c6.2 0 10.5 3.7 10.5 9.4 0 4.6-2.7 7.8-7 8.8L45 46h-7.4l-6.9-9h-4.1v9H20Zm6.6-14.6h6.2c3 0 4.9-1.6 4.9-4.1s-1.9-4-4.9-4h-6.2v8.1Z" fill="#fff"/>
+  <path d="M45.5 18h6.2l-4.3 28h-6.1l4.2-28Z" fill="#DC1C2D"/>
+</svg>
