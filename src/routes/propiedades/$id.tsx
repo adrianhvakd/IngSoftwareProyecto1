@@ -108,7 +108,9 @@ function DetallePage() {
 			etiqueta: "Amoblado",
 			valor: inmueble.amoblado ? "Sí" : "No",
 		},
-	];
+	].filter(
+		(spec) => !(inmueble.tipo === "Local" && spec.etiqueta === "Habitaciones"),
+	);
 
 	return (
 		<PublicLayout>

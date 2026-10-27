@@ -5,16 +5,37 @@ import {
 	LayoutGrid,
 	List,
 	MapPin,
+	Pencil,
 	Plus,
 	Search,
 	Star,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import { EmptyState } from "@/components/common/empty-state";
 import { inmuebleTone, StatusBadge } from "@/components/common/status-badge";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { ZonePicker } from "@/components/pickers/zone-picker";
 import { PropertyCard } from "@/components/property/property-card";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
 	Select,
@@ -31,8 +52,9 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import { inmuebles } from "@/data/inmuebles";
-import { TIPOS_INMUEBLE, ZONAS } from "@/lib/catalog";
+import { inmuebles as inmueblesIniciales } from "@/data/inmuebles";
+import type { Inmueble, InmuebleEstado } from "@/data/types";
+import { TIPOS_INMUEBLE } from "@/lib/catalog";
 import { formatBsMes, formatFecha } from "@/lib/format";
 
 export const Route = createFileRoute("/admin/inmuebles/")({
@@ -42,28 +64,49 @@ export const Route = createFileRoute("/admin/inmuebles/")({
 	component: AdminInmuebles,
 });
 
-type FiltroEstado = "todos" | "Disponible" | "En alquiler" | "Destacado";
+type FiltroEstado =
+	| "todos"
+	| "Disponible"
+	| "Reservado"
+	| "En alquiler"
+	| "Inactivo"
+	| "Destacado";
 
-const ESTADOS: FiltroEstado[] = [
+const ESTADOS_FILTRO: FiltroEstado[] = [
 	"todos",
 	"Disponible",
+	"Reservado",
 	"En alquiler",
+	"Inactivo",
 	"Destacado",
 ];
 
+const ESTADOS_INMUEBLE: InmuebleEstado[] = [
+	"Disponible",
+	"Reservado",
+	"En alquiler",
+	"Inactivo",
+];
+
 function AdminInmuebles() {
+	const [lista, setLista] = useState<Inmueble[]>(inmueblesIniciales);
 	const [q, setQ] = useState("");
 	const [tipo, setTipo] = useState("todos");
-	const [zona, setZona] = useState("todos");
+	const [zonas, setZonas] = useState<string[]>([]);
 	const [estado, setEstado] = useState<FiltroEstado>("todos");
 	const [vista, setVista] = useState<"grilla" | "tabla">("tabla");
+	const [baja, setBaja] = useState<Inmueble | null>(null);
 
 	const resultados = useMemo(() => {
 		const termino = q.trim().toLowerCase();
-		return inmuebles.filter((i) => {
+		return lista.filter((i) => {
 			if (tipo !== "todos" && i.tipo !== tipo) return false;
-			if (zona !== "todos" && i.zona !== zona) return false;
-			if (estado !== "todos" && i.estado !== estado) return false;
+			if (zonas.length > 0 && !zonas.includes(i.zona)) return false;
+			if (estado === "Destacado") {
+				if (!i.destacado) return false;
+			} else if (estado !== "todos" && i.estado !== estado) {
+				return false;
+			}
 			if (termino) {
 				const heno =
 					`${i.titulo} ${i.codigo} ${i.direccion} ${i.zona}`.toLowerCase();
@@ -71,7 +114,42 @@ function AdminInmuebles() {
 			}
 			return true;
 		});
-	}, [q, tipo, zona, estado]);
+	}, [lista, q, tipo, zonas, estado]);
+
+	function limpiarFiltros() {
+		setQ("");
+		setTipo("todos");
+		setZonas([]);
+		setEstado("todos");
+	}
+
+	function aplicarEstado(inmueble: Inmueble, nuevo: InmuebleEstado) {
+		setLista((prev) =>
+			prev.map((i) => (i.id === inmueble.id ? { ...i, estado: nuevo } : i)),
+		);
+		toast.success("Estado actualizado", {
+			description: `${inmueble.codigo} ahora está «${nuevo}». (Acción simulada)`,
+		});
+	}
+
+	function cambiarEstado(inmueble: Inmueble, nuevo: InmuebleEstado) {
+		if (nuevo === inmueble.estado) return;
+		if (nuevo === "Inactivo") {
+			setBaja(inmueble);
+			return;
+		}
+		aplicarEstado(inmueble, nuevo);
+	}
+
+	function alternarDestacado(inmueble: Inmueble) {
+		const nuevo = !inmueble.destacado;
+		setLista((prev) =>
+			prev.map((i) => (i.id === inmueble.id ? { ...i, destacado: nuevo } : i)),
+		);
+		toast.success(nuevo ? "Marcado como destacado" : "Quitado de destacados", {
+			description: `${inmueble.codigo} · ${inmueble.titulo}`,
+		});
+	}
 
 	return (
 		<>
@@ -88,93 +166,97 @@ function AdminInmuebles() {
 				}
 			/>
 
-			<div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 lg:flex-row lg:items-center">
-				<div className="relative flex-1">
-					<Search
-						className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
-						aria-hidden="true"
-					/>
-					<Input
-						value={q}
-						onChange={(e) => setQ(e.target.value)}
-						placeholder="Buscar por título, código o dirección…"
-						className="pl-9"
-						aria-label="Buscar inmuebles"
-					/>
-				</div>
-				<div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:w-auto">
-					<Select value={tipo} onValueChange={setTipo}>
-						<SelectTrigger aria-label="Filtrar por tipo">
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="todos">Todo tipo</SelectItem>
-							{TIPOS_INMUEBLE.map((t) => (
-								<SelectItem key={t} value={t}>
-									{t}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-					<Select value={zona} onValueChange={setZona}>
-						<SelectTrigger aria-label="Filtrar por zona">
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="todos">Toda zona</SelectItem>
-							{ZONAS.map((z) => (
-								<SelectItem key={z} value={z}>
-									{z}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-					<Select
-						value={estado}
-						onValueChange={(v) => setEstado(v as FiltroEstado)}
-					>
-						<SelectTrigger aria-label="Filtrar por estado">
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							{ESTADOS.map((e) => (
-								<SelectItem key={e} value={e}>
-									{e === "todos" ? "Todo estado" : e}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				</div>
+			<div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
+				<div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+					<div className="relative flex-1">
+						<Search
+							className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+							aria-hidden="true"
+						/>
+						<Input
+							value={q}
+							onChange={(e) => setQ(e.target.value)}
+							placeholder="Buscar por título, código o dirección…"
+							className="pl-9"
+							aria-label="Buscar inmuebles"
+						/>
+					</div>
+					<div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:w-auto">
+						<Select value={tipo} onValueChange={setTipo}>
+							<SelectTrigger aria-label="Filtrar por tipo">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="todos">Todo tipo</SelectItem>
+								{TIPOS_INMUEBLE.map((t) => (
+									<SelectItem key={t} value={t}>
+										{t}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+						<div className="min-w-40">
+							<ZonePicker
+								mode="multiple"
+								value={zonas}
+								onChange={setZonas}
+								placeholder="Toda zona"
+							/>
+						</div>
+						<Select
+							value={estado}
+							onValueChange={(v) => setEstado(v as FiltroEstado)}
+						>
+							<SelectTrigger aria-label="Filtrar por estado">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{ESTADOS_FILTRO.map((e) => (
+									<SelectItem key={e} value={e}>
+										{e === "todos" ? "Todo estado" : e}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</div>
 
-				<div
-					role="toolbar"
-					aria-label="Vista de inmuebles"
-					className="flex items-center self-start rounded-lg border border-border bg-card p-0.5 lg:self-auto"
-				>
-					<Button
-						variant={vista === "tabla" ? "secondary" : "ghost"}
-						size="icon-sm"
-						onClick={() => setVista("tabla")}
-						aria-pressed={vista === "tabla"}
-						aria-label="Vista de tabla"
+					<div
+						role="toolbar"
+						aria-label="Vista de inmuebles"
+						className="flex items-center self-start rounded-lg border border-border bg-card p-0.5 lg:self-auto"
 					>
-						<List aria-hidden="true" />
-					</Button>
-					<Button
-						variant={vista === "grilla" ? "secondary" : "ghost"}
-						size="icon-sm"
-						onClick={() => setVista("grilla")}
-						aria-pressed={vista === "grilla"}
-						aria-label="Vista de galería"
-					>
-						<LayoutGrid aria-hidden="true" />
-					</Button>
+						<Button
+							variant={vista === "tabla" ? "secondary" : "ghost"}
+							size="icon-sm"
+							onClick={() => setVista("tabla")}
+							aria-pressed={vista === "tabla"}
+							aria-label="Vista de tabla"
+						>
+							<List aria-hidden="true" />
+						</Button>
+						<Button
+							variant={vista === "grilla" ? "secondary" : "ghost"}
+							size="icon-sm"
+							onClick={() => setVista("grilla")}
+							aria-pressed={vista === "grilla"}
+							aria-label="Vista de galería"
+						>
+							<LayoutGrid aria-hidden="true" />
+						</Button>
+					</div>
 				</div>
 			</div>
 
-			<p className="text-sm text-muted-foreground">
-				{resultados.length} de {inmuebles.length} inmuebles
-			</p>
+			<div className="flex flex-wrap items-center justify-between gap-2">
+				<p className="text-sm text-muted-foreground">
+					{resultados.length} de {lista.length} inmuebles
+				</p>
+				{q || tipo !== "todos" || zonas.length > 0 || estado !== "todos" ? (
+					<Button variant="ghost" size="sm" onClick={limpiarFiltros}>
+						Limpiar filtros
+					</Button>
+				) : null}
+			</div>
 
 			{resultados.length === 0 ? (
 				<EmptyState
@@ -182,15 +264,7 @@ function AdminInmuebles() {
 					title="Sin inmuebles que coincidan"
 					description="Cambia la búsqueda o los filtros de tipo, zona y estado para ver resultados."
 					action={
-						<Button
-							variant="outline"
-							onClick={() => {
-								setQ("");
-								setTipo("todos");
-								setZona("todos");
-								setEstado("todos");
-							}}
-						>
+						<Button variant="outline" onClick={limpiarFiltros}>
 							Limpiar filtros
 						</Button>
 					}
@@ -227,7 +301,7 @@ function AdminInmuebles() {
 											</div>
 											<div className="min-w-0">
 												<span className="flex items-center gap-1.5">
-													<span className="block max-w-[240px] truncate font-medium text-foreground">
+													<span className="block max-w-60 truncate font-medium text-foreground">
 														{i.titulo}
 													</span>
 													{i.destacado ? (
@@ -246,7 +320,7 @@ function AdminInmuebles() {
 									<TableCell className="text-muted-foreground">
 										{i.tipo}
 									</TableCell>
-									<TableCell className="hidden max-w-[180px] md:table-cell">
+									<TableCell className="hidden max-w-45 md:table-cell">
 										<span className="flex items-center gap-1.5 text-sm text-muted-foreground">
 											<MapPin
 												className="size-3.5 shrink-0 text-primary/70"
@@ -262,17 +336,33 @@ function AdminInmuebles() {
 										{formatFecha(i.fechaDisponibilidad)}
 									</TableCell>
 									<TableCell>
-										<StatusBadge tone={inmuebleTone[i.estado]}>
-											{i.estado}
-										</StatusBadge>
+										<EstadoMenu
+											inmueble={i}
+											onCambiar={(e) => cambiarEstado(i, e)}
+											onDestacar={() => alternarDestacado(i)}
+										/>
 									</TableCell>
 									<TableCell className="pr-5 text-right">
-										<Button asChild variant="ghost" size="sm">
-											<Link to="/propiedades/$id" params={{ id: i.id }}>
-												Ver
-												<ExternalLink className="size-3.5" aria-hidden="true" />
-											</Link>
-										</Button>
+										<div className="flex items-center justify-end gap-1">
+											<Button asChild variant="ghost" size="sm">
+												<Link
+													to="/admin/inmuebles/$id/editar"
+													params={{ id: i.id }}
+												>
+													<Pencil className="size-3.5" aria-hidden="true" />
+													Editar
+												</Link>
+											</Button>
+											<Button asChild variant="ghost" size="sm">
+												<Link to="/propiedades/$id" params={{ id: i.id }}>
+													Ver
+													<ExternalLink
+														className="size-3.5"
+														aria-hidden="true"
+													/>
+												</Link>
+											</Button>
+										</div>
 									</TableCell>
 								</TableRow>
 							))}
@@ -280,6 +370,81 @@ function AdminInmuebles() {
 					</Table>
 				</div>
 			)}
+
+			<AlertDialog
+				open={baja !== null}
+				onOpenChange={(open) => !open && setBaja(null)}
+			>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>
+							¿Marcar el inmueble como inactivo?
+						</AlertDialogTitle>
+						<AlertDialogDescription>
+							{baja
+								? `${baja.codigo} · ${baja.titulo} dejará de mostrarse en el catálogo público. Podrás reactivarlo cambiando su estado más adelante.`
+								: null}
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>Cancelar</AlertDialogCancel>
+						<AlertDialogAction
+							onClick={() => {
+								if (baja) aplicarEstado(baja, "Inactivo");
+								setBaja(null);
+							}}
+						>
+							Sí, desactivar
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</>
+	);
+}
+
+function EstadoMenu({
+	inmueble,
+	onCambiar,
+	onDestacar,
+}: {
+	inmueble: Inmueble;
+	onCambiar: (estado: InmuebleEstado) => void;
+	onDestacar: () => void;
+}) {
+	return (
+		<DropdownMenu>
+			<DropdownMenuTrigger asChild>
+				<button
+					type="button"
+					className="rounded-full transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+					aria-label={`Cambiar estado de ${inmueble.titulo}`}
+				>
+					<StatusBadge tone={inmuebleTone[inmueble.estado]}>
+						{inmueble.estado}
+					</StatusBadge>
+				</button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="start" className="w-48">
+				<DropdownMenuLabel>Cambiar estado</DropdownMenuLabel>
+				{ESTADOS_INMUEBLE.map((e) => (
+					<DropdownMenuItem
+						key={e}
+						disabled={e === inmueble.estado}
+						onSelect={() => onCambiar(e)}
+					>
+						{e}
+					</DropdownMenuItem>
+				))}
+				<DropdownMenuSeparator />
+				<DropdownMenuItem onSelect={onDestacar}>
+					<Star
+						className={inmueble.destacado ? "fill-cta text-cta" : undefined}
+						aria-hidden="true"
+					/>
+					{inmueble.destacado ? "Quitar destacado" : "Marcar como destacado"}
+				</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
 	);
 }

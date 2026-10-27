@@ -5,6 +5,7 @@ import {
 	ClipboardList,
 	FileSignature,
 	HandCoins,
+	Handshake,
 	LayoutDashboard,
 	ReceiptText,
 	UserCog,
@@ -50,6 +51,7 @@ export const NAV_ADMIN: NavGroup[] = [
 		items: [
 			{ title: "Usuarios", to: "/admin/usuarios", icon: Users },
 			{ title: "Vendedores", to: "/admin/vendedores", icon: UserCog },
+			{ title: "Proveedores", to: "/admin/proveedores", icon: Handshake },
 		],
 	},
 ];

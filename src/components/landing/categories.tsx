@@ -30,12 +30,6 @@ const CATEGORIAS: Categoria[] = [
 		imagen:
 			"https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=900&q=70",
 	},
-	{
-		tipo: "Terreno",
-		descripcion: "Lotes con servicios y buena ubicación",
-		imagen:
-			"https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=900&q=70",
-	},
 ];
 
 export function Categories() {
@@ -47,7 +41,7 @@ export function Categories() {
 					description="Filtra por lo que buscas y llega directo a las opciones disponibles en cada zona de la ciudad."
 				/>
 
-				<div className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+				<div className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-3">
 					{CATEGORIAS.map((categoria) => {
 						const cantidad = inmuebles.filter(
 							(i) => i.tipo === categoria.tipo,

@@ -125,7 +125,7 @@ function AdminVisitas() {
 				onValueChange={(v) => setEstado(v as FiltroEstado)}
 			>
 				<SelectTrigger
-					className="w-full sm:w-[170px]"
+					className="w-full sm:w-42.5"
 					aria-label="Filtrar por estado"
 				>
 					<SelectValue />
@@ -312,7 +312,7 @@ function AdminVisitas() {
 												</span>
 											</TableCell>
 											<TableCell>
-												<span className="block max-w-[220px] truncate font-medium text-foreground">
+												<span className="block max-w-55 truncate font-medium text-foreground">
 													{v.inmueble.titulo}
 												</span>
 												<span className="text-xs text-muted-foreground">
@@ -335,7 +335,7 @@ function AdminVisitas() {
 												>
 													<SelectTrigger
 														size="sm"
-														className="h-8 w-[170px]"
+														className="h-8 `w-42.5"
 														aria-label={`Asignar agente a ${v.cliente.nombre}`}
 													>
 														<SelectValue placeholder="Sin asignar" />

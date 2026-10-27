@@ -27,7 +27,11 @@ const enlacesRapidos = [
 	{ label: "Crear cuenta", to: "/registro" as const },
 ];
 
-const tiposBusqueda = ["Casas", "Departamentos", "Locales", "Terrenos"];
+const tiposBusqueda = [
+	{ label: "Casas", tipo: "Casa" as const },
+	{ label: "Departamentos", tipo: "Departamento" as const },
+	{ label: "Locales", tipo: "Local" as const },
+];
 
 export function PublicFooter() {
 	return (
@@ -87,13 +91,13 @@ export function PublicFooter() {
 						</h3>
 						<ul className="mt-5 space-y-3 text-sm">
 							{tiposBusqueda.map((tipo) => (
-								<li key={tipo}>
+								<li key={tipo.tipo}>
 									<Link
 										to="/propiedades"
-										search={{ tipo }}
+										search={{ tipo: tipo.tipo }}
 										className="text-white/70 transition-colors duration-150 ease-out hover:text-white"
 									>
-										{tipo}
+										{tipo.label}
 									</Link>
 								</li>
 							))}

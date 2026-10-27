@@ -7,8 +7,8 @@ interface SmartImageProps {
 	alt: string;
 	className?: string;
 	imgClassName?: string;
-	/** Relación de aspecto para reservar espacio y evitar saltos. */
-	aspectRatio?: string;
+	/** Relación de aspecto para reservar espacio y evitar saltos. `null` para llenar el contenedor. */
+	aspectRatio?: string | null;
 	width?: number;
 	height?: number;
 	/** Si la imagen está en el primer viewport, evita lazy. */
@@ -38,7 +38,7 @@ export function SmartImage({
 	return (
 		<div
 			className={cn("relative isolate overflow-hidden bg-muted", className)}
-			style={{ aspectRatio }}
+			style={aspectRatio ? { aspectRatio } : undefined}
 		>
 			{estado === "cargando" ? (
 				<div className="absolute inset-0 animate-pulse bg-gradient-to-br from-secondary to-muted" />

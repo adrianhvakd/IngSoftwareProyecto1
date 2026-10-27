@@ -6,16 +6,19 @@ import {
 	CheckCircle2,
 	CreditCard,
 	FileCheck2,
+	Landmark,
 	QrCode,
 	Smartphone,
 	Upload,
 	Wallet,
 	X,
 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { cuotaTone, StatusBadge } from "@/components/common/status-badge";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { QrVisual } from "@/components/pickers/qr-visual";
+import { RentalPicker } from "@/components/pickers/rental-picker";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -24,14 +27,8 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { getAlquileresDetalle, getPagosDeAlquiler } from "@/data";
 import type { MedioPago } from "@/data/types";
@@ -77,58 +74,85 @@ const METODOS: MetodoPago[] = [
 		detalle: "Pago en oficina RE/MAX Potosí",
 		icono: Banknote,
 	},
+	{
+		id: "Otro",
+		titulo: "Otros",
+		detalle: "Depósito, cheque u otro medio",
+		icono: Landmark,
+	},
 ];
 
 function RegistrarPago() {
-	const alquileresVigentes = useMemo(
-		() => getAlquileresDetalle().filter((a) => a.estado === "Vigente"),
-		[],
-	);
-	const inicial = useMemo(() => {
-		const propias = alquileresVigentes.filter(
-			(a) => a.vendedorId === vendedorActual.id,
+	const alquileres = useMemo(() => {
+		const propios = getAlquileresDetalle().filter(
+			(a) => a.estado === "Vigente" && a.vendedorId === vendedorActual.id,
 		);
-		const conMora = (propias.length > 0 ? propias : alquileresVigentes).find(
-			(a) => a.cuotaActual?.estado === "En mora",
-		);
-		return (
-			conMora ??
-			(propias.length > 0 ? propias : alquileresVigentes)[0] ??
-			alquileresVigentes[0]
-		);
-	}, [alquileresVigentes]);
+		return propios.length > 0
+			? propios
+			: getAlquileresDetalle().filter((a) => a.estado === "Vigente");
+	}, []);
 
-	const [alquilerId, setAlquilerId] = useState(inicial?.id ?? "");
+	const inicial = useMemo(() => {
+		const conMora = alquileres.find((a) => a.cuotaActual?.estado === "En mora");
+		return conMora ?? alquileres[0];
+	}, [alquileres]);
+
+	const [alquilerId, setAlquilerId] = useState<string | null>(
+		inicial?.id ?? null,
+	);
+	const [seleccion, setSeleccion] = useState<string[]>([]);
 	const [medio, setMedio] = useState<MedioPago>("Transferencia QR");
 	const [comprobante, setComprobante] = useState<string | null>(null);
 	const [arrastrando, setArrastrando] = useState(false);
 	const [registrado, setRegistrado] = useState(false);
 	const inputComprobante = useRef<HTMLInputElement>(null);
 
-	const alquiler =
-		alquileresVigentes.find((a) => a.id === alquilerId) ?? inicial;
-	const cuota = alquiler?.cuotaActual;
-	const historial = alquiler
-		? getPagosDeAlquiler(alquiler.id).slice(-3).reverse()
-		: [];
+	const alquiler = alquileres.find((a) => a.id === alquilerId) ?? null;
+	const cuotas = useMemo(
+		() => (alquiler ? getPagosDeAlquiler(alquiler.id) : []),
+		[alquiler],
+	);
+	const pendientes = cuotas.filter((c) => c.estado !== "Pagada");
 
-	const total = cuota?.monto ?? 0;
-	const requiereComprobante =
-		medio === "Transferencia QR" ||
-		medio === "Tarjeta de crédito" ||
-		medio === "Tarjeta de débito";
+	// Al cambiar de contrato, selecciona la cuota actual por defecto.
+	useEffect(() => {
+		if (!alquiler) {
+			setSeleccion([]);
+			return;
+		}
+		const porDefecto = alquiler.cuotaActual?.id
+			? [alquiler.cuotaActual.id]
+			: [];
+		setSeleccion(porDefecto);
+		setRegistrado(false);
+	}, [alquiler]);
+
+	const seleccionadas = cuotas.filter((c) => seleccion.includes(c.id));
+	const total = seleccionadas.reduce((acc, c) => acc + c.monto, 0);
+	const requiereComprobante = medio !== "Efectivo";
+
+	function alternarCuota(id: string) {
+		setRegistrado(false);
+		setSeleccion((prev) =>
+			prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+		);
+	}
 
 	function agregarComprobante(files: FileList | null) {
 		if (!files || files.length === 0) return;
 		setComprobante(files[0].name);
-		toast.success("Comprobante adjuntado", {
-			description: files[0].name,
-		});
+		toast.success("Comprobante adjuntado", { description: files[0].name });
 	}
 
 	function registrar() {
-		if (!alquiler || !cuota) {
-			toast.error("Selecciona un contrato con cuota pendiente");
+		if (!alquiler) {
+			toast.error("Selecciona un contrato");
+			return;
+		}
+		if (seleccionadas.length === 0) {
+			toast.error("Selecciona al menos una cuota", {
+				description: "Marca las cuotas que vas a cobrar en este pago.",
+			});
 			return;
 		}
 		if (requiereComprobante && !comprobante) {
@@ -161,7 +185,7 @@ function RegistrarPago() {
 
 			<PageHeader
 				title="Registrar pago"
-				description="Cobra la cuota de un contrato, elige el medio de pago y adjunta el comprobante."
+				description="Selecciona el contrato, marca las cuotas a cobrar, elige el medio de pago y adjunta el comprobante."
 			/>
 
 			<div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
@@ -169,68 +193,80 @@ function RegistrarPago() {
 					<Card>
 						<CardHeader>
 							<CardTitle className="font-display text-base font-bold">
-								Contrato y cuota
+								Contrato
 							</CardTitle>
 							<CardDescription>
-								Selecciona el contrato cuyo pago vas a registrar.
+								Busca y elige el alquiler cuyo pago vas a registrar.
 							</CardDescription>
 						</CardHeader>
-						<CardContent className="flex flex-col gap-4">
-							<div className="flex flex-col gap-2">
-								<Label htmlFor="p-contrato">Contrato</Label>
-								<Select value={alquilerId} onValueChange={setAlquilerId}>
-									<SelectTrigger id="p-contrato" aria-label="Contrato">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										{alquileresVigentes.map((a) => (
-											<SelectItem key={a.id} value={a.id}>
-												{a.codigo} · {a.cliente.nombre}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-							</div>
+						<CardContent>
+							<RentalPicker
+								alquileres={alquileres}
+								value={alquilerId}
+								onChange={setAlquilerId}
+							/>
+						</CardContent>
+					</Card>
 
-							{alquiler && cuota ? (
-								<div className="grid grid-cols-1 gap-4 rounded-xl border border-border bg-secondary/50 p-4 sm:grid-cols-3">
-									<Dato etiqueta="Inmueble" valor={alquiler.inmueble.titulo} />
-									<Dato etiqueta="Cliente" valor={alquiler.cliente.nombre} />
-									<div>
-										<p className="text-xs text-muted-foreground">
-											Cuota actual
-										</p>
-										<div className="mt-1 flex items-center gap-2">
-											<StatusBadge tone={cuotaTone[cuota.estado]}>
-												{cuota.estado}
-											</StatusBadge>
-											<span className="text-xs text-muted-foreground">
-												{formatPeriodo(cuota.periodo)}
-											</span>
-										</div>
-									</div>
-									<Dato
-										etiqueta="Vencimiento"
-										valor={formatFecha(cuota.fechaVencimiento)}
-									/>
-									<Dato
-										etiqueta="Monto base"
-										valor={formatBs(cuota.montoBase)}
-									/>
-									<Dato
-										etiqueta="Recargo por mora"
-										valor={
-											cuota.recargoMora > 0
-												? formatBs(cuota.recargoMora)
-												: "Sin recargo"
-										}
-										alerta={cuota.recargoMora > 0}
-									/>
-								</div>
-							) : (
+					<Card>
+						<CardHeader>
+							<CardTitle className="font-display text-base font-bold">
+								Cuotas a cobrar
+							</CardTitle>
+							<CardDescription>
+								Marca las cuotas pendientes que incluye este pago.
+							</CardDescription>
+						</CardHeader>
+						<CardContent className="flex flex-col gap-3">
+							{!alquiler ? (
 								<p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
-									No hay cuotas pendientes para este contrato.
+									Selecciona un contrato para ver sus cuotas.
 								</p>
+							) : pendientes.length === 0 ? (
+								<p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+									Este contrato no tiene cuotas pendientes.
+								</p>
+							) : (
+								pendientes.map((c) => {
+									const activo = seleccion.includes(c.id);
+									return (
+										<label
+											key={c.id}
+											htmlFor={`cuota-${c.id}`}
+											className={cn(
+												"flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 transition-colors duration-150 ease-out",
+												activo
+													? "border-primary/50 bg-blue-soft"
+													: "border-border hover:bg-accent/40",
+											)}
+										>
+											<Checkbox
+												id={`cuota-${c.id}`}
+												checked={activo}
+												onCheckedChange={() => alternarCuota(c.id)}
+											/>
+											<span className="flex-1">
+												<span className="block text-sm font-medium text-foreground">
+													Cuota #{c.numeroCuota} · {formatPeriodo(c.periodo)}
+												</span>
+												<span className="block text-xs text-muted-foreground">
+													Vence el {formatFecha(c.fechaVencimiento)}
+													{c.recargoMora > 0
+														? ` · incluye recargo ${formatBs(c.recargoMora)}`
+														: ""}
+												</span>
+											</span>
+											<span className="flex items-center gap-2">
+												<StatusBadge tone={cuotaTone[c.estado]}>
+													{c.estado}
+												</StatusBadge>
+												<span className="font-medium tabular text-foreground">
+													{formatBs(c.monto)}
+												</span>
+											</span>
+										</label>
+									);
+								})
 							)}
 						</CardContent>
 					</Card>
@@ -253,10 +289,13 @@ function RegistrarPago() {
 										<button
 											key={m.id}
 											type="button"
-											onClick={() => setMedio(m.id)}
+											onClick={() => {
+												setMedio(m.id);
+												setRegistrado(false);
+											}}
 											aria-pressed={activo}
 											className={cn(
-												"flex items-start gap-3 rounded-xl border px-4 py-3 text-left transition-colors duration-150",
+												"flex items-start gap-3 rounded-xl border px-4 py-3 text-left transition-colors duration-150 ease-out",
 												activo
 													? "border-primary/50 bg-blue-soft"
 													: "border-border hover:border-primary/30 hover:bg-accent/50",
@@ -286,9 +325,10 @@ function RegistrarPago() {
 							</div>
 
 							{medio === "Transferencia QR" ? (
-								<div className="flex flex-col items-center gap-4 rounded-xl border border-border bg-card p-6 sm:flex-row sm:items-center">
-									<QrPlaceholder
+								<div className="flex flex-col items-center gap-4 rounded-xl border border-border bg-card p-6 sm:flex-row">
+									<QrVisual
 										value={`remax-potosi:${alquiler?.codigo ?? "contrato"}:${total}`}
+										className="shrink-0 rounded-lg border border-border bg-white p-2"
 									/>
 									<div className="text-center sm:text-left">
 										<p className="font-display text-sm font-bold text-foreground">
@@ -299,7 +339,7 @@ function RegistrarPago() {
 											<strong className="tabular text-foreground">
 												{formatBs(total)}
 											</strong>
-											. El pago se acredita automáticamente.
+											.
 										</p>
 										<p className="mt-2 text-xs text-muted-foreground">
 											Cuenta RE/MAX Potosí · Banco Unión · **** 4471
@@ -331,7 +371,10 @@ function RegistrarPago() {
 											variant="ghost"
 											size="icon-sm"
 											aria-label="Quitar comprobante"
-											onClick={() => setComprobante(null)}
+											onClick={() => {
+												setComprobante(null);
+												setRegistrado(false);
+											}}
 										>
 											<X aria-hidden="true" />
 										</Button>
@@ -374,30 +417,42 @@ function RegistrarPago() {
 				</div>
 
 				<div className="flex flex-col gap-6">
-					<Card className="h-fit">
+					<Card className="h-fit xl:sticky xl:top-6">
 						<CardHeader>
 							<CardTitle className="flex items-center gap-2 font-display text-base font-bold">
-								<Wallet className="size-4 text-primary" aria-hidden="true" />
+								<Wallet className="size-4 text-brand-text" aria-hidden="true" />
 								Resumen del cobro
 							</CardTitle>
 						</CardHeader>
 						<CardContent className="flex flex-col gap-3">
 							<Fila etiqueta="Contrato" valor={alquiler?.codigo ?? "—"} />
 							<Fila
-								etiqueta="Periodo"
-								valor={cuota ? formatPeriodo(cuota.periodo) : "—"}
+								etiqueta="Cuotas seleccionadas"
+								valor={String(seleccionadas.length)}
 							/>
 							<Fila etiqueta="Medio de pago" valor={medio} />
 							<Separator />
-							<Fila
-								etiqueta="Monto base"
-								valor={formatBs(cuota?.montoBase ?? 0)}
-							/>
-							<Fila
-								etiqueta="Recargo por mora"
-								valor={formatBs(cuota?.recargoMora ?? 0)}
-								alerta={(cuota?.recargoMora ?? 0) > 0}
-							/>
+							{seleccionadas.length === 0 ? (
+								<p className="text-sm text-muted-foreground">
+									Aún no has marcado cuotas.
+								</p>
+							) : (
+								<div className="flex flex-col gap-2">
+									{seleccionadas.map((c) => (
+										<div
+											key={c.id}
+											className="flex items-center justify-between gap-3 text-sm"
+										>
+											<span className="text-muted-foreground">
+												{formatPeriodo(c.periodo)}
+											</span>
+											<span className="tabular text-foreground">
+												{formatBs(c.monto)}
+											</span>
+										</div>
+									))}
+								</div>
+							)}
 							<div className="mt-1 flex items-center justify-between rounded-lg bg-blue-soft px-4 py-3">
 								<span className="font-display text-sm font-bold text-blue-deep">
 									Total a cobrar
@@ -442,12 +497,16 @@ function RegistrarPago() {
 							</CardDescription>
 						</CardHeader>
 						<CardContent className="flex flex-col gap-2 px-4 pb-4">
-							{historial.length === 0 ? (
-								<p className="text-sm text-muted-foreground">
-									Aún no hay pagos registrados.
-								</p>
-							) : (
-								historial.map((p) => (
+							{(() => {
+								const historial = cuotas.slice(-3).reverse();
+								if (historial.length === 0) {
+									return (
+										<p className="text-sm text-muted-foreground">
+											Aún no hay pagos registrados.
+										</p>
+									);
+								}
+								return historial.map((p) => (
 									<div
 										key={p.id}
 										className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2.5"
@@ -469,8 +528,8 @@ function RegistrarPago() {
 											</StatusBadge>
 										</div>
 									</div>
-								))
-							)}
+								));
+							})()}
 						</CardContent>
 					</Card>
 				</div>
@@ -479,114 +538,13 @@ function RegistrarPago() {
 	);
 }
 
-function Dato({
-	etiqueta,
-	valor,
-	alerta,
-}: {
-	etiqueta: string;
-	valor: string;
-	alerta?: boolean;
-}) {
-	return (
-		<div>
-			<p className="text-xs text-muted-foreground">{etiqueta}</p>
-			<p
-				className={cn(
-					"mt-0.5 text-sm font-medium",
-					alerta ? "text-destructive" : "text-foreground",
-				)}
-			>
-				{valor}
-			</p>
-		</div>
-	);
-}
-
-function Fila({
-	etiqueta,
-	valor,
-	alerta,
-}: {
-	etiqueta: string;
-	valor: string;
-	alerta?: boolean;
-}) {
+function Fila({ etiqueta, valor }: { etiqueta: string; valor: string }) {
 	return (
 		<div className="flex items-center justify-between gap-3">
 			<span className="text-sm text-muted-foreground">{etiqueta}</span>
-			<span
-				className={cn(
-					"text-right text-sm font-medium tabular",
-					alerta ? "text-destructive" : "text-foreground",
-				)}
-			>
+			<span className="text-right text-sm font-medium tabular text-foreground">
 				{valor}
 			</span>
 		</div>
-	);
-}
-
-/** Genera un patrón tipo QR determinista a partir de un texto (visual, no escaneable). */
-function QrPlaceholder({ value }: { value: string }) {
-	const celdas = 21;
-	const matriz = useMemo(() => {
-		let semilla = 0;
-		for (let i = 0; i < value.length; i++) {
-			semilla = (semilla * 31 + value.charCodeAt(i)) >>> 0;
-		}
-		const rand = () => {
-			semilla ^= semilla << 13;
-			semilla ^= semilla >>> 17;
-			semilla ^= semilla << 5;
-			semilla >>>= 0;
-			return (semilla % 1000) / 1000;
-		};
-		const grid: boolean[][] = Array.from({ length: celdas }, () =>
-			Array.from({ length: celdas }, () => rand() > 0.5),
-		);
-		const marcar = (fila: number, col: number) => {
-			for (let f = 0; f < 7; f++) {
-				for (let c = 0; c < 7; c++) {
-					const borde = f === 0 || f === 6 || c === 0 || c === 6;
-					const centro = f >= 2 && f <= 4 && c >= 2 && c <= 4;
-					grid[fila + f][col + c] = borde || centro;
-				}
-			}
-		};
-		marcar(0, 0);
-		marcar(0, celdas - 7);
-		marcar(celdas - 7, 0);
-		return grid;
-	}, [value]);
-
-	const tamano = 148;
-	const celda = tamano / celdas;
-
-	return (
-		<svg
-			viewBox={`0 0 ${tamano} ${tamano}`}
-			width={140}
-			height={140}
-			role="img"
-			aria-label="Código QR de pago (representación visual)"
-			className="shrink-0 rounded-lg border border-border bg-white p-2"
-		>
-			{matriz.flatMap((fila, f) =>
-				fila.map((activo, c) =>
-					activo ? (
-						<rect
-							// biome-ignore lint/suspicious/noArrayIndexKey: grilla estática
-							key={`${f}-${c}`}
-							x={c * celda}
-							y={f * celda}
-							width={celda}
-							height={celda}
-							fill="var(--color-primary)"
-						/>
-					) : null,
-				),
-			)}
-		</svg>
 	);
 }

@@ -46,14 +46,23 @@ export interface Proveedor {
 	id: string;
 	nombre: string;
 	telefono: string;
-	email: string;
+	/** Correo electrónico (opcional). */
+	email?: string;
 	tipo: "Persona" | "Empresa";
 	ciudad: string;
+	/** Zona principal donde administra inmuebles. */
+	zonaPrincipal: string;
+	estado: EstadoCuenta;
+	desde: string; // ISO date
 }
 
-export type TipoInmueble = "Casa" | "Departamento" | "Local" | "Terreno";
+export type TipoInmueble = "Casa" | "Departamento" | "Local";
 
-export type InmuebleEstado = "Disponible" | "En alquiler" | "Destacado";
+export type InmuebleEstado =
+	| "Disponible"
+	| "Reservado"
+	| "En alquiler"
+	| "Inactivo";
 
 export interface Inmueble {
 	id: string;

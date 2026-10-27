@@ -33,12 +33,12 @@ export function PropertyCard({
 				className="flex h-full flex-1 flex-col focus-visible:outline-none"
 				aria-label={`Ver detalle de ${inmueble.titulo}`}
 			>
-				<div className={cn("relative", esLista && "sm:w-[320px] sm:shrink-0")}>
+				<div className={cn("relative", esLista && "sm:w-72 sm:shrink-0")}>
 					<SmartImage
 						src={inmueble.imagenes[0]}
 						alt={`${inmueble.titulo}, ${inmueble.zona}`}
-						aspectRatio={esLista ? "4 / 3" : "4 / 3"}
-						className={cn("w-full", esLista && "sm:h-full")}
+						aspectRatio={esLista ? null : "4 / 3"}
+						className={cn("w-full", esLista && "h-56 sm:h-full")}
 						sizes="(max-width: 768px) 100vw, 33vw"
 					/>
 					<div className="absolute top-3 left-3 flex flex-wrap gap-2">

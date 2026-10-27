@@ -67,7 +67,7 @@ export const Route = createFileRoute("/propiedades/")({
 			{
 				name: "description",
 				content:
-					"Explora casas, departamentos, locales y terrenos en alquiler en Potosí. Filtra por zona, precio y habitaciones.",
+					"Explora casas, departamentos y locales en alquiler en Potosí. Filtra por zona, precio y habitaciones.",
 			},
 		],
 	}),
@@ -117,12 +117,21 @@ function CatalogoPage() {
 		});
 	}
 
-	function quitarFiltro(clave: keyof typeof search) {
+	function quitarFiltro(filtro: {
+		clave: keyof typeof search;
+		valor?: string;
+	}) {
 		void navigate({
 			to: "/propiedades",
 			search: (prev) => {
 				const siguiente = { ...prev };
-				delete siguiente[clave];
+				if (filtro.clave === "zona" && filtro.valor) {
+					const restantes = (prev.zona ?? []).filter((z) => z !== filtro.valor);
+					if (restantes.length > 0) siguiente.zona = restantes;
+					else delete siguiente.zona;
+				} else {
+					delete siguiente[filtro.clave];
+				}
 				siguiente.pagina = 1;
 				return siguiente;
 			},
@@ -268,9 +277,9 @@ function CatalogoPage() {
 								</span>
 								{activos.map((filtro) => (
 									<button
-										key={filtro.clave}
+										key={`${filtro.clave}-${filtro.valor ?? filtro.etiqueta}`}
 										type="button"
-										onClick={() => quitarFiltro(filtro.clave)}
+										onClick={() => quitarFiltro(filtro)}
 										className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-blue-soft px-3 py-1 text-xs font-semibold text-blue-deep transition-colors duration-150 ease-out hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
 									>
 										{filtro.etiqueta}

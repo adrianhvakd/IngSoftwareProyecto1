@@ -54,6 +54,39 @@ export const getVisitasDeCliente = (clienteId: string) =>
 export const getAlquileresDeCliente = (clienteId: string) =>
 	alquileres.filter((a) => a.clienteId === clienteId);
 
+export const getAlquileresDeVendedor = (vendedorId: string) =>
+	alquileres.filter((a) => a.vendedorId === vendedorId);
+
+export const getInmueblesDeProveedor = (proveedorId: string) =>
+	inmuebles.filter((i) => i.proveedorId === proveedorId);
+
+export interface ZonaConConteo {
+	zona: string;
+	total: number;
+}
+
+/** Zonas con la cantidad de inmuebles publicados (para ZonePicker). */
+export function getZonasConConteo(): ZonaConConteo[] {
+	const mapa = new Map<string, number>();
+	for (const inmueble of inmuebles) {
+		mapa.set(inmueble.zona, (mapa.get(inmueble.zona) ?? 0) + 1);
+	}
+	return Array.from(mapa.entries())
+		.map(([zona, total]) => ({ zona, total }))
+		.sort((a, b) => b.total - a.total);
+}
+
+export interface ProveedorConConteo extends Proveedor {
+	inmueblesCount: number;
+}
+
+export function getProveedoresConConteo(): ProveedorConConteo[] {
+	return proveedores.map((p) => ({
+		...p,
+		inmueblesCount: inmuebles.filter((i) => i.proveedorId === p.id).length,
+	}));
+}
+
 export function getInmueblesSimilares(
 	inmueble: Inmueble,
 	limite = 3,

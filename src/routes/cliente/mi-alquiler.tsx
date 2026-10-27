@@ -1,4 +1,5 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { cn } from "cn";
 import {
 	Building2,
 	CalendarClock,
@@ -7,7 +8,6 @@ import {
 	Download,
 	FileText,
 	MapPin,
-	QrCode,
 	ReceiptText,
 	Search,
 	Wallet,
@@ -15,12 +15,14 @@ import {
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/common/empty-state";
+import { SmartImage } from "@/components/common/smart-image";
 import {
 	alquilerTone,
 	cuotaTone,
 	StatusBadge,
 } from "@/components/common/status-badge";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { QrVisual } from "@/components/pickers/qr-visual";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -46,12 +48,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import {
-	getAlquileresDeCliente,
-	getInmueble,
-	getPagosDeAlquiler,
-	getVendedor,
-} from "@/data";
+import { getAlquileresDetalle, getPagosDeAlquiler } from "@/data";
 import { clienteActual } from "@/data/clientes";
 import {
 	formatBs,
@@ -61,6 +58,9 @@ import {
 } from "@/lib/format";
 
 export const Route = createFileRoute("/cliente/mi-alquiler")({
+	validateSearch: (search: Record<string, unknown>): { alquiler?: string } => ({
+		alquiler: typeof search.alquiler === "string" ? search.alquiler : undefined,
+	}),
 	head: () => ({
 		meta: [{ title: "Mi alquiler · Mi cuenta · RE/MAX Potosí" }],
 	}),
@@ -68,20 +68,38 @@ export const Route = createFileRoute("/cliente/mi-alquiler")({
 });
 
 function ClienteAlquiler() {
-	const alquiler = useMemo(() => {
-		const propios = getAlquileresDeCliente(clienteActual.id);
-		return propios.find((a) => a.estado === "Vigente") ?? propios[0];
-	}, []);
+	const navigate = useNavigate();
+	const { alquiler: alquilerParam } = Route.useSearch();
+
+	const alquileres = useMemo(
+		() =>
+			getAlquileresDetalle().filter((a) => a.clienteId === clienteActual.id),
+		[],
+	);
 
 	const [pagarAbierto, setPagarAbierto] = useState(false);
 	const [pagado, setPagado] = useState(false);
 
-	if (!alquiler) {
+	const seleccionado =
+		alquileres.find((a) => a.id === alquilerParam) ??
+		alquileres.find((a) => a.estado === "Vigente") ??
+		alquileres[0];
+
+	function seleccionar(id: string) {
+		setPagado(false);
+		void navigate({
+			to: "/cliente/mi-alquiler",
+			search: { alquiler: id },
+			replace: true,
+		});
+	}
+
+	if (!seleccionado) {
 		return (
 			<>
 				<PageHeader
 					title="Mi alquiler"
-					description="Aquí verás el detalle de tu contrato, cuotas y pagos."
+					description="Aquí verás el detalle de tus contratos, cuotas y pagos."
 				/>
 				<EmptyState
 					icon={<Building2 className="size-6" aria-hidden="true" />}
@@ -100,9 +118,9 @@ function ClienteAlquiler() {
 		);
 	}
 
-	const inmueble = getInmueble(alquiler.inmuebleId);
-	const vendedor = getVendedor(alquiler.vendedorId);
-	const pagos = getPagosDeAlquiler(alquiler.id);
+	const inmueble = seleccionado.inmueble;
+	const vendedor = seleccionado.vendedor;
+	const pagos = getPagosDeAlquiler(seleccionado.id);
 	const pendientes = pagos.filter((p) => p.estado !== "Pagada");
 	const cuotaActual = pendientes[0];
 	const totalPagado = pagos
@@ -122,13 +140,13 @@ function ClienteAlquiler() {
 		<>
 			<PageHeader
 				title="Mi alquiler"
-				description="Detalle del contrato, próxima cuota e historial de pagos."
+				description="Detalle de tus contratos, próxima cuota e historial de pagos."
 				actions={
 					<Button
 						variant="outline"
 						onClick={() =>
 							toast.info("Descargando contrato", {
-								description: `${alquiler.codigo}.pdf (Acción simulada)`,
+								description: `${seleccionado.codigo}.pdf (Acción simulada)`,
 							})
 						}
 					>
@@ -137,6 +155,56 @@ function ClienteAlquiler() {
 					</Button>
 				}
 			/>
+
+			{alquileres.length > 1 ? (
+				<section className="flex flex-col gap-3">
+					<h2 className="font-display text-sm font-bold text-foreground">
+						Tus contratos ({alquileres.length})
+					</h2>
+					<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+						{alquileres.map((a) => {
+							const activo = a.id === seleccionado.id;
+							return (
+								<button
+									key={a.id}
+									type="button"
+									onClick={() => seleccionar(a.id)}
+									aria-pressed={activo}
+									className={cn(
+										"flex items-stretch gap-3 overflow-hidden rounded-xl border bg-card text-left transition-[border-color,box-shadow,transform] duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+										activo
+											? "border-primary shadow-[var(--shadow-lift)] ring-1 ring-primary"
+											: "border-border hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[var(--shadow-soft)]",
+									)}
+								>
+									<SmartImage
+										src={a.inmueble.imagenes[0]}
+										alt={a.inmueble.titulo}
+										aspectRatio="4 / 3"
+										className="hidden w-24 shrink-0 sm:block sm:h-auto"
+									/>
+									<span className="flex flex-1 flex-col gap-1.5 p-3">
+										<span className="text-[11px] font-semibold tracking-wide text-brand-text uppercase">
+											{a.codigo}
+										</span>
+										<span className="line-clamp-2 text-sm font-bold text-foreground">
+											{a.inmueble.titulo}
+										</span>
+										<span className="mt-auto flex flex-wrap items-center justify-between gap-2">
+											<span className="font-display text-sm font-bold tabular text-foreground">
+												{formatBsMes(a.montoMensual)}
+											</span>
+											<StatusBadge tone={alquilerTone[a.estado]}>
+												{a.estado}
+											</StatusBadge>
+										</span>
+									</span>
+								</button>
+							);
+						})}
+					</div>
+				</section>
+			) : null}
 
 			{cuotaActual ? (
 				<Card className="overflow-hidden border-primary/20">
@@ -181,16 +249,16 @@ function ClienteAlquiler() {
 						<div className="grid grid-cols-2 gap-4 rounded-xl border border-border bg-secondary/50 p-4 lg:w-72">
 							<Metrica
 								etiqueta="Alquiler mensual"
-								valor={formatBs(alquiler.montoMensual)}
+								valor={formatBs(seleccionado.montoMensual)}
 							/>
 							<Metrica
 								etiqueta="Día de cobro"
-								valor={`Día ${alquiler.diaCobro}`}
+								valor={`Día ${seleccionado.diaCobro}`}
 							/>
 							<Metrica etiqueta="Total pagado" valor={formatBs(totalPagado)} />
 							<Metrica
 								etiqueta="Estado contrato"
-								valor={alquiler.estado}
+								valor={seleccionado.estado}
 								tono={alDia ? "success" : "danger"}
 							/>
 						</div>
@@ -220,7 +288,7 @@ function ClienteAlquiler() {
 							Historial de pagos
 						</CardTitle>
 						<CardDescription>
-							{pagos.length} cuotas registradas en tu contrato.
+							{pagos.length} cuotas registradas en este contrato.
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="px-0 pb-2">
@@ -284,36 +352,39 @@ function ClienteAlquiler() {
 						<div className="rounded-lg border border-border p-4">
 							<p className="text-xs text-muted-foreground">Inmueble</p>
 							<p className="mt-0.5 font-semibold text-foreground">
-								{inmueble?.titulo}
+								{inmueble.titulo}
 							</p>
 							<p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
 								<MapPin
 									className="size-3.5 shrink-0 text-primary/70"
 									aria-hidden="true"
 								/>
-								{inmueble?.direccion}
+								{inmueble.direccion}
 							</p>
 							<div className="mt-2">
-								<StatusBadge tone={alquilerTone[alquiler.estado]}>
-									Contrato {alquiler.estado.toLowerCase()}
+								<StatusBadge tone={alquilerTone[seleccionado.estado]}>
+									Contrato {seleccionado.estado.toLowerCase()}
 								</StatusBadge>
 							</div>
 						</div>
 
-						<Fila etiqueta="Código de contrato" valor={alquiler.codigo} />
-						<Fila etiqueta="Inicio" valor={formatFecha(alquiler.fechaInicio)} />
-						<Fila etiqueta="Fin" valor={formatFecha(alquiler.fechaFin)} />
+						<Fila etiqueta="Código de contrato" valor={seleccionado.codigo} />
+						<Fila
+							etiqueta="Inicio"
+							valor={formatFecha(seleccionado.fechaInicio)}
+						/>
+						<Fila etiqueta="Fin" valor={formatFecha(seleccionado.fechaFin)} />
 						<Fila
 							etiqueta="Alquiler mensual"
-							valor={formatBsMes(alquiler.montoMensual)}
+							valor={formatBsMes(seleccionado.montoMensual)}
 						/>
 						<Fila
 							etiqueta="Depósito de garantía"
-							valor={formatBs(alquiler.deposito)}
+							valor={formatBs(seleccionado.deposito)}
 						/>
 						<Fila
 							etiqueta="Contrato escaneado"
-							valor={alquiler.contratoEscaneado ? "Archivado" : "Pendiente"}
+							valor={seleccionado.contratoEscaneado ? "Archivado" : "Pendiente"}
 						/>
 						<Separator />
 						<div className="flex items-center gap-3">
@@ -325,7 +396,8 @@ function ClienteAlquiler() {
 									Tu agente RE/MAX
 								</p>
 								<p className="text-xs text-muted-foreground">
-									{vendedor?.nombre} · {vendedor?.telefono}
+									{vendedor?.nombre ?? "Sin asignar"} ·{" "}
+									{vendedor?.telefono ?? "—"}
 								</p>
 							</div>
 						</div>
@@ -345,10 +417,10 @@ function ClienteAlquiler() {
 						</DialogDescription>
 					</DialogHeader>
 					<div className="flex flex-col items-center gap-4">
-						<div className="grid size-40 place-items-center rounded-xl border border-border bg-white">
-							<span className="grid size-16 place-items-center rounded-lg bg-blue-soft text-primary">
-								<QrCode className="size-8" aria-hidden="true" />
-							</span>
+						<div className="grid place-items-center rounded-xl border border-border bg-white p-2">
+							<QrVisual
+								value={`remax-potosi:${seleccionado.codigo}:${cuotaActual?.monto ?? 0}`}
+							/>
 						</div>
 						<p className="text-center text-sm text-muted-foreground">
 							Escanea el código con tu app bancaria o selecciona tarjeta. El

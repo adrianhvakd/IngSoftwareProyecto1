@@ -12,9 +12,9 @@ interface LogoProps {
 /**
  * Marca de la oficina.
  *
- * Carga /public/logo-remax.svg (reemplazable) cuando se activa con
- * `VITE_USE_LOGO_SVG=true`. Mientras el archivo no exista, compone el wordmark
- * "RE/MAX" + "Potosí" con la tipografía. Si el SVG falla, vuelve al wordmark.
+ * Usa el globo oficial de /public/logo_remax.png junto al wordmark tipográfico
+ * "RE/MAX" + "Potosí". Si la imagen no carga, cae al monograma "R" para no
+ * romper el encabezado. En impresión se fuerza blanco y negro.
  */
 export function Logo({
 	variant = "default",
@@ -23,20 +23,6 @@ export function Logo({
 }: LogoProps) {
 	const [imageFailed, setImageFailed] = useState(false);
 	const isLight = variant === "light";
-	const usarSvg = import.meta.env.VITE_USE_LOGO_SVG === "true";
-
-	if (usarSvg && !imageFailed) {
-		return (
-			<img
-				src="/logo-remax.svg"
-				alt="RE/MAX Potosí"
-				width={180}
-				height={48}
-				className={cn("h-9 w-auto", className)}
-				onError={() => setImageFailed(true)}
-			/>
-		);
-	}
 
 	return (
 		<span
@@ -44,12 +30,26 @@ export function Logo({
 			className={cn("inline-flex items-center gap-2.5 select-none", className)}
 			aria-label="RE/MAX Potosí"
 		>
-			<span
-				aria-hidden="true"
-				className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary font-display text-[15px] font-extrabold text-white"
-			>
-				R
-			</span>
+			{imageFailed ? (
+				<span
+					aria-hidden="true"
+					className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary font-display text-[15px] font-extrabold text-white"
+				>
+					R
+				</span>
+			) : (
+				<img
+					src="/logo_remax.png"
+					alt=""
+					aria-hidden="true"
+					width={460}
+					height={444}
+					draggable={false}
+					decoding="async"
+					onError={() => setImageFailed(true)}
+					className="size-10 shrink-0 object-contain select-none print:grayscale"
+				/>
+			)}
 			<span className="flex flex-col leading-none">
 				<span
 					className={cn(
@@ -63,7 +63,7 @@ export function Logo({
 					<span
 						className={cn(
 							"mt-0.5 text-[11px] font-semibold tracking-[0.28em] uppercase",
-							isLight ? "text-white/70" : "text-primary",
+							isLight ? "text-white/70" : "text-brand-text",
 						)}
 					>
 						Potosí

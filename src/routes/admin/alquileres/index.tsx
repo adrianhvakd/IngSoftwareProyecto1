@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
 	BadgeDollarSign,
 	CalendarClock,
@@ -51,7 +51,7 @@ import {
 	formatPeriodo,
 } from "@/lib/format";
 
-export const Route = createFileRoute("/admin/alquileres")({
+export const Route = createFileRoute("/admin/alquileres/")({
 	head: () => ({
 		meta: [{ title: "Alquileres y cobros · Administración · RE/MAX Potosí" }],
 	}),
@@ -83,17 +83,11 @@ function AdminAlquileres() {
 				title="Alquileres y cobros"
 				description="Contratos vigentes, calendario de cuotas recurrentes y estado de cobranza."
 				actions={
-					<Button
-						variant="cta"
-						onClick={() =>
-							toast.info("Procesar alquiler", {
-								description:
-									"Se abriría el asistente de cierre de contrato. (Acción simulada)",
-							})
-						}
-					>
-						<ReceiptText aria-hidden="true" />
-						Procesar alquiler
+					<Button asChild variant="cta">
+						<Link to="/admin/alquileres/nuevo">
+							<ReceiptText aria-hidden="true" />
+							Registrar alquiler
+						</Link>
 					</Button>
 				}
 			/>

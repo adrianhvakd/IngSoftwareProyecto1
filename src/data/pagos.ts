@@ -54,6 +54,12 @@ const a3 = alquilerPorId("alq-003");
 const a4 = alquilerPorId("alq-004");
 const a5 = alquilerPorId("alq-005");
 const a6 = alquilerPorId("alq-006");
+const a7 = alquilerPorId("alq-007");
+const a8 = alquilerPorId("alq-008");
+const a9 = alquilerPorId("alq-009");
+const a10 = alquilerPorId("alq-010");
+const a11 = alquilerPorId("alq-011");
+const a12 = alquilerPorId("alq-012");
 
 /** Historial de pagos y cobros recurrentes (HU-09). 30 cuotas de ejemplo. */
 export const pagos: Pago[] = [
@@ -273,5 +279,122 @@ export const pagos: Pago[] = [
 			medioPago: "Transferencia QR",
 			registradoPor: "Carla Mendoza Vaca",
 		},
+	]),
+	...makeCuotas(a7.id, a7.codigo, a7.montoMensual, [
+		{
+			periodo: "2026-10",
+			venc: "2026-10-05",
+			estado: "En mora",
+			recargo: 180,
+		},
+	]),
+	...makeCuotas(a8.id, a8.codigo, a8.montoMensual, [
+		{
+			periodo: "2026-09",
+			venc: "2026-09-20",
+			estado: "Pagada",
+			fechaPago: "2026-09-19",
+			medioPago: "Transferencia QR",
+			registradoPor: "Carla Mendoza Vaca",
+		},
+		{ periodo: "2026-10", venc: "2026-10-20", estado: "Por vencer" },
+	]),
+	...makeCuotas(a9.id, a9.codigo, a9.montoMensual, [
+		{
+			periodo: "2026-07",
+			venc: "2026-07-15",
+			estado: "Pagada",
+			fechaPago: "2026-07-14",
+			medioPago: "Efectivo",
+			registradoPor: "Carla Mendoza Vaca",
+		},
+		{
+			periodo: "2026-08",
+			venc: "2026-08-15",
+			estado: "Pagada",
+			fechaPago: "2026-08-15",
+			medioPago: "Transferencia QR",
+			registradoPor: "Carla Mendoza Vaca",
+		},
+		{ periodo: "2026-09", venc: "2026-09-15", estado: "En mora", recargo: 145 },
+		{ periodo: "2026-10", venc: "2026-10-15", estado: "En mora", recargo: 145 },
+	]),
+	...makeCuotas(a10.id, a10.codigo, a10.montoMensual, [
+		{
+			periodo: "2026-08",
+			venc: "2026-08-05",
+			estado: "Pagada",
+			fechaPago: "2026-08-04",
+			medioPago: "Transferencia QR",
+			registradoPor: "Carla Mendoza Vaca",
+		},
+		{
+			periodo: "2026-09",
+			venc: "2026-09-05",
+			estado: "Pagada",
+			fechaPago: "2026-09-06",
+			medioPago: "Tarjeta de crédito",
+			registradoPor: "Carla Mendoza Vaca",
+		},
+		{
+			periodo: "2026-10",
+			venc: "2026-10-05",
+			estado: "Pagada",
+			fechaPago: "2026-10-04",
+			medioPago: "Transferencia QR",
+			registradoPor: "Carla Mendoza Vaca",
+		},
+		{ periodo: "2026-11", venc: "2026-11-05", estado: "Por vencer" },
+	]),
+	...makeCuotas(a11.id, a11.codigo, a11.montoMensual, [
+		{
+			periodo: "2026-09",
+			venc: "2026-09-01",
+			estado: "Pagada",
+			fechaPago: "2026-09-01",
+			medioPago: "Transferencia QR",
+			registradoPor: "Carla Mendoza Vaca",
+		},
+		{
+			periodo: "2026-10",
+			venc: "2026-10-01",
+			estado: "Pagada",
+			fechaPago: "2026-10-01",
+			medioPago: "Transferencia QR",
+			registradoPor: "Carla Mendoza Vaca",
+		},
+		{ periodo: "2026-11", venc: "2026-11-01", estado: "Por vencer" },
+	]),
+	...makeCuotas(a12.id, a12.codigo, a12.montoMensual, [
+		{
+			periodo: "2026-05",
+			venc: "2026-05-10",
+			estado: "Pagada",
+			fechaPago: "2026-05-10",
+			medioPago: "Transferencia QR",
+		},
+		{
+			periodo: "2026-06",
+			venc: "2026-06-10",
+			estado: "Pagada",
+			fechaPago: "2026-06-09",
+			medioPago: "Transferencia QR",
+		},
+		{
+			periodo: "2026-07",
+			venc: "2026-07-10",
+			estado: "Pagada",
+			fechaPago: "2026-07-11",
+			medioPago: "Efectivo",
+		},
+		{
+			periodo: "2026-08",
+			venc: "2026-08-10",
+			estado: "Pagada",
+			fechaPago: "2026-08-10",
+			medioPago: "Transferencia QR",
+		},
+		{ periodo: "2026-09", venc: "2026-09-10", estado: "En mora", recargo: 130 },
+		{ periodo: "2026-10", venc: "2026-10-10", estado: "En mora", recargo: 130 },
 	]),
 ];

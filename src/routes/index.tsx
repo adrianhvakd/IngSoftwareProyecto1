@@ -18,7 +18,7 @@ export const Route = createFileRoute("/")({
 			{
 				name: "description",
 				content:
-					"Encuentra tu próximo hogar en Potosí: casas, departamentos, locales y terrenos en alquiler. Agenda visitas, firma tu contrato y gestiona tus cuotas mensuales.",
+					"Encuentra tu próximo hogar en Potosí: casas, departamentos y locales en alquiler. Agenda visitas, firma tu contrato y gestiona tus cuotas mensuales.",
 			},
 			{
 				property: "og:title",

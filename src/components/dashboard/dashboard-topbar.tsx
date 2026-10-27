@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { StatusBadge } from "@/components/common/status-badge";
 import { navParaRol, SESIONES } from "@/components/dashboard/nav-config";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -135,6 +136,8 @@ export function DashboardTopbar({ rol }: { rol: Rol }) {
 				>
 					<Search aria-hidden="true" />
 				</Button>
+
+				<ThemeToggle />
 
 				<Popover>
 					<PopoverTrigger asChild>

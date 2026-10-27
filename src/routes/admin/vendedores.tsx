@@ -6,6 +6,8 @@ import {
 	Pencil,
 	Plus,
 	UserCog,
+	UserPlus,
+	UserRound,
 	UserX,
 } from "lucide-react";
 import { useState } from "react";
@@ -14,6 +16,10 @@ import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { CredentialsCard } from "@/components/pickers/credentials-card";
+import { EntityPicker } from "@/components/pickers/entity-picker";
+import { PasswordGenerator } from "@/components/pickers/password-generator";
+import { ZonePicker } from "@/components/pickers/zone-picker";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -51,7 +57,9 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Vendedor } from "@/data/types";
+import { usuarios } from "@/data/usuarios";
 import { vendedores as vendedoresIniciales } from "@/data/vendedores";
 import { formatBs, iniciales } from "@/lib/format";
 
@@ -69,6 +77,7 @@ interface FormularioVendedor {
 	zona: string;
 	cargo: string;
 	comisionFija: string;
+	avatarUrl: string;
 }
 
 const FORM_VACIO: FormularioVendedor = {
@@ -78,6 +87,7 @@ const FORM_VACIO: FormularioVendedor = {
 	zona: "",
 	cargo: "Agente comercial",
 	comisionFija: "800",
+	avatarUrl: "",
 };
 
 function AdminVendedores() {
@@ -86,6 +96,15 @@ function AdminVendedores() {
 	const [editando, setEditando] = useState<Vendedor | null>(null);
 	const [form, setForm] = useState<FormularioVendedor>(FORM_VACIO);
 	const [baja, setBaja] = useState<Vendedor | null>(null);
+
+	// Alta de vendedor nuevo
+	const [modo, setModo] = useState<"existente" | "nuevo">("existente");
+	const [usuarioId, setUsuarioId] = useState<string | null>(null);
+	const [password, setPassword] = useState("");
+	const [creado, setCreado] = useState<{
+		usuario: string;
+		password: string;
+	} | null>(null);
 
 	const activos = lista.filter((v) => v.estado === "Activo").length;
 	const comisionPromedio =
@@ -96,9 +115,19 @@ function AdminVendedores() {
 			: 0;
 	const totalCerrados = lista.reduce((acc, v) => acc + v.alquileresCerrados, 0);
 
+	const candidatos = usuarios.filter(
+		(u) =>
+			u.rol !== "Administrador" &&
+			!vendedoresIniciales.some((v) => v.email === u.email),
+	);
+
 	function abrirNuevo() {
 		setEditando(null);
 		setForm(FORM_VACIO);
+		setModo("existente");
+		setUsuarioId(null);
+		setPassword("");
+		setCreado(null);
 		setSheetAbierto(true);
 	}
 
@@ -111,8 +140,24 @@ function AdminVendedores() {
 			zona: v.zona,
 			cargo: v.cargo,
 			comisionFija: String(v.comisionFija),
+			avatarUrl: v.avatarUrl,
 		});
+		setCreado(null);
 		setSheetAbierto(true);
+	}
+
+	function elegirUsuario(id: string | null) {
+		setUsuarioId(id);
+		const u = usuarios.find((x) => x.id === id);
+		if (u) {
+			setForm((f) => ({
+				...f,
+				nombre: u.nombre,
+				email: u.email,
+				telefono: u.telefono,
+				avatarUrl: u.avatarUrl,
+			}));
+		}
 	}
 
 	function guardar() {
@@ -139,7 +184,7 @@ function AdminVendedores() {
 								nombre: form.nombre,
 								email: form.email,
 								telefono: form.telefono,
-								zona: form.zona,
+								zona: form.zona || v.zona,
 								cargo: form.cargo,
 								comisionFija: comision,
 							}
@@ -149,25 +194,36 @@ function AdminVendedores() {
 			toast.success("Vendedor actualizado", {
 				description: `${form.nombre} guardado correctamente. (Acción simulada)`,
 			});
-		} else {
-			const nuevo: Vendedor = {
-				id: `vnd-${String(lista.length + 1).padStart(3, "0")}`,
-				nombre: form.nombre,
-				email: form.email,
-				telefono: form.telefono,
-				zona: form.zona || "Sin asignar",
-				cargo: form.cargo || "Agente comercial",
-				comisionFija: comision,
-				alquileresCerrados: 0,
-				estado: "Activo",
-				avatarUrl: "",
-				ingresoEl: "2026-10-17",
-			};
-			setLista((prev) => [...prev, nuevo]);
-			toast.success("Vendedor registrado", {
-				description: `${form.nombre} se sumó al equipo. (Acción simulada)`,
-			});
+			setSheetAbierto(false);
+			return;
 		}
+
+		const nuevo: Vendedor = {
+			id: `vnd-${String(lista.length + 1).padStart(3, "0")}`,
+			nombre: form.nombre,
+			email: form.email,
+			telefono: form.telefono,
+			zona: form.zona || "Sin asignar",
+			cargo: form.cargo || "Agente comercial",
+			comisionFija: comision,
+			alquileresCerrados: 0,
+			estado: "Activo",
+			avatarUrl: form.avatarUrl,
+			ingresoEl: "2026-10-19",
+		};
+		setLista((prev) => [...prev, nuevo]);
+
+		if (modo === "nuevo") {
+			setCreado({ usuario: form.email, password });
+			toast.success("Vendedor registrado", {
+				description: `${form.nombre} se sumó al equipo. Entrega sus credenciales.`,
+			});
+			return;
+		}
+
+		toast.success("Vendedor ascendido", {
+			description: `${form.nombre} pasó a formar parte del equipo comercial. (Acción simulada)`,
+		});
 		setSheetAbierto(false);
 	}
 
@@ -323,103 +379,203 @@ function AdminVendedores() {
 				</div>
 			)}
 
-			<Sheet open={sheetAbierto} onOpenChange={setSheetAbierto}>
+			<Sheet
+				open={sheetAbierto}
+				onOpenChange={(open) => {
+					setSheetAbierto(open);
+					if (!open) setCreado(null);
+				}}
+			>
 				<SheetContent className="w-full overflow-y-auto sm:max-w-md">
-					<SheetHeader>
-						<SheetTitle className="font-display">
-							{editando ? "Editar vendedor" : "Nuevo vendedor"}
-						</SheetTitle>
-						<SheetDescription>
-							{editando
-								? "Actualiza los datos y la comisión del agente."
-								: "Completa los datos para sumar un agente al equipo comercial."}
-						</SheetDescription>
-					</SheetHeader>
+					{creado ? (
+						<>
+							<SheetHeader>
+								<SheetTitle className="font-display">
+									Vendedor registrado
+								</SheetTitle>
+								<SheetDescription>
+									Entrega las credenciales de acceso al nuevo agente.
+								</SheetDescription>
+							</SheetHeader>
+							<div className="px-4">
+								<CredentialsCard
+									usuario={creado.usuario}
+									password={creado.password}
+									titulo="Credenciales del vendedor"
+								/>
+							</div>
+							<SheetFooter className="flex-row justify-end gap-2 px-4">
+								<Button
+									variant="default"
+									onClick={() => setSheetAbierto(false)}
+								>
+									Entendido
+								</Button>
+							</SheetFooter>
+						</>
+					) : (
+						<>
+							<SheetHeader>
+								<SheetTitle className="font-display">
+									{editando ? "Editar vendedor" : "Nuevo vendedor"}
+								</SheetTitle>
+								<SheetDescription>
+									{editando
+										? "Actualiza los datos y la comisión del agente."
+										: "Asciende a un usuario existente o registra un agente nuevo."}
+								</SheetDescription>
+							</SheetHeader>
 
-					<div className="flex flex-col gap-4 px-4">
-						<div className="flex flex-col gap-2">
-							<Label htmlFor="vd-nombre">Nombre completo *</Label>
-							<Input
-								id="vd-nombre"
-								value={form.nombre}
-								onChange={(e) =>
-									setForm((f) => ({ ...f, nombre: e.target.value }))
-								}
-								placeholder="Ej. Carla Mendoza Vaca"
-							/>
-						</div>
-						<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-							<div className="flex flex-col gap-2">
-								<Label htmlFor="vd-email">Correo *</Label>
-								<Input
-									id="vd-email"
-									type="email"
-									value={form.email}
-									onChange={(e) =>
-										setForm((f) => ({ ...f, email: e.target.value }))
-									}
-									placeholder="agente@remaxpotosi.bo"
-								/>
-							</div>
-							<div className="flex flex-col gap-2">
-								<Label htmlFor="vd-telefono">Teléfono</Label>
-								<Input
-									id="vd-telefono"
-									value={form.telefono}
-									onChange={(e) =>
-										setForm((f) => ({ ...f, telefono: e.target.value }))
-									}
-									placeholder="+591 70000000"
-								/>
-							</div>
-						</div>
-						<div className="flex flex-col gap-2">
-							<Label htmlFor="vd-zona">Zona asignada</Label>
-							<Input
-								id="vd-zona"
-								value={form.zona}
-								onChange={(e) =>
-									setForm((f) => ({ ...f, zona: e.target.value }))
-								}
-								placeholder="Ej. San Clemente · Av. Las Banderas"
-							/>
-						</div>
-						<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-							<div className="flex flex-col gap-2">
-								<Label htmlFor="vd-cargo">Cargo</Label>
-								<Input
-									id="vd-cargo"
-									value={form.cargo}
-									onChange={(e) =>
-										setForm((f) => ({ ...f, cargo: e.target.value }))
-									}
-									placeholder="Agente comercial"
-								/>
-							</div>
-							<div className="flex flex-col gap-2">
-								<Label htmlFor="vd-comision">Comisión fija (Bs) *</Label>
-								<Input
-									id="vd-comision"
-									type="number"
-									min={0}
-									inputMode="numeric"
-									value={form.comisionFija}
-									onChange={(e) =>
-										setForm((f) => ({ ...f, comisionFija: e.target.value }))
-									}
-								/>
-							</div>
-						</div>
-					</div>
+							<div className="flex flex-col gap-4 px-4">
+								{!editando ? (
+									<Tabs
+										value={modo}
+										onValueChange={(v) => setModo(v as "existente" | "nuevo")}
+									>
+										<TabsList className="w-full">
+											<TabsTrigger value="existente" className="flex-1">
+												<UserRound aria-hidden="true" />
+												Usuario existente
+											</TabsTrigger>
+											<TabsTrigger value="nuevo" className="flex-1">
+												<UserPlus aria-hidden="true" />
+												Registrar nuevo
+											</TabsTrigger>
+										</TabsList>
+										<TabsContent value="existente" className="mt-4">
+											<div className="flex flex-col gap-2">
+												<Label>Usuario de la plataforma</Label>
+												<EntityPicker
+													items={candidatos.map((u) => ({
+														id: u.id,
+														nombre: u.nombre,
+														avatarUrl: u.avatarUrl,
+														secundario: `${u.rol} · ${u.email}`,
+													}))}
+													value={usuarioId}
+													onChange={elegirUsuario}
+													placeholder="Buscar usuario para ascender…"
+													resumenBadge="Usuario"
+												/>
+												<p className="text-xs text-muted-foreground">
+													Al ascender, la cuenta cambia su rol a vendedor
+													conservando el acceso.
+												</p>
+											</div>
+										</TabsContent>
+										<TabsContent value="nuevo" className="mt-4">
+											<p className="text-xs text-muted-foreground">
+												Se creará una cuenta nueva. Asigna una contraseña
+												temporal que se mostrará una sola vez.
+											</p>
+										</TabsContent>
+									</Tabs>
+								) : null}
 
-					<SheetFooter className="flex-row justify-end gap-2 px-4">
-						<Button variant="outline" onClick={() => setSheetAbierto(false)}>
-							Cancelar
-						</Button>
-						<Button variant="default" onClick={guardar}>
-							{editando ? "Guardar cambios" : "Registrar vendedor"}
-						</Button>
-					</SheetFooter>
+								<div className="flex flex-col gap-2">
+									<Label htmlFor="vd-nombre">Nombre completo *</Label>
+									<Input
+										id="vd-nombre"
+										value={form.nombre}
+										onChange={(e) =>
+											setForm((f) => ({ ...f, nombre: e.target.value }))
+										}
+										placeholder="Ej. Carla Mendoza Vaca"
+									/>
+								</div>
+								<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+									<div className="flex flex-col gap-2">
+										<Label htmlFor="vd-email">Correo *</Label>
+										<Input
+											id="vd-email"
+											type="email"
+											value={form.email}
+											onChange={(e) =>
+												setForm((f) => ({ ...f, email: e.target.value }))
+											}
+											placeholder="agente@remaxpotosi.bo"
+										/>
+									</div>
+									<div className="flex flex-col gap-2">
+										<Label htmlFor="vd-telefono">Teléfono</Label>
+										<Input
+											id="vd-telefono"
+											value={form.telefono}
+											onChange={(e) =>
+												setForm((f) => ({ ...f, telefono: e.target.value }))
+											}
+											placeholder="+591 70000000"
+										/>
+									</div>
+								</div>
+								<div className="flex flex-col gap-2">
+									<Label htmlFor="vd-zona">Zona asignada</Label>
+									<ZonePicker
+										id="vd-zona"
+										mode="single"
+										value={form.zona ? [form.zona] : []}
+										onChange={(zonas) =>
+											setForm((f) => ({ ...f, zona: zonas[0] ?? "" }))
+										}
+										placeholder="Elegir zona…"
+									/>
+								</div>
+								<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+									<div className="flex flex-col gap-2">
+										<Label htmlFor="vd-cargo">Cargo</Label>
+										<Input
+											id="vd-cargo"
+											value={form.cargo}
+											onChange={(e) =>
+												setForm((f) => ({ ...f, cargo: e.target.value }))
+											}
+											placeholder="Agente comercial"
+										/>
+									</div>
+									<div className="flex flex-col gap-2">
+										<Label htmlFor="vd-comision">Comisión fija (Bs) *</Label>
+										<Input
+											id="vd-comision"
+											type="number"
+											min={0}
+											inputMode="numeric"
+											value={form.comisionFija}
+											onChange={(e) =>
+												setForm((f) => ({
+													...f,
+													comisionFija: e.target.value,
+												}))
+											}
+										/>
+									</div>
+								</div>
+
+								{!editando && modo === "nuevo" ? (
+									<PasswordGenerator
+										value={password}
+										onChange={setPassword}
+										label="Contraseña temporal del vendedor"
+									/>
+								) : null}
+							</div>
+
+							<SheetFooter className="flex-row justify-end gap-2 px-4">
+								<Button
+									variant="outline"
+									onClick={() => setSheetAbierto(false)}
+								>
+									Cancelar
+								</Button>
+								<Button variant="default" onClick={guardar}>
+									{editando
+										? "Guardar cambios"
+										: modo === "existente"
+											? "Ascender a vendedor"
+											: "Registrar vendedor"}
+								</Button>
+							</SheetFooter>
+						</>
+					)}
 				</SheetContent>
 			</Sheet>
 

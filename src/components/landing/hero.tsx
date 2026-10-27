@@ -1,11 +1,14 @@
 import { useNavigate } from "@tanstack/react-router";
-import { Building2, MapPin, Search, Wallet } from "lucide-react";
+import { Building2, MapPin, RotateCcw, Search, Wallet } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { FlipWords } from "@/components/aceternity/flip-words";
 import { Spotlight } from "@/components/aceternity/spotlight";
 import { TextGenerateEffect } from "@/components/aceternity/text-generate-effect";
 import { BalloonMotif } from "@/components/brand/balloon";
+import { CurrencyInput } from "@/components/common/currency-input";
 import { SmartImage } from "@/components/common/smart-image";
+import { ZonePicker } from "@/components/pickers/zone-picker";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -16,37 +19,45 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import type { CatalogSearch } from "@/lib/catalog";
-import { TIPOS_INMUEBLE, ZONAS } from "@/lib/catalog";
-
-interface RangoPrecio {
-	id: string;
-	label: string;
-	min?: number;
-	max?: number;
-}
-
-const RANGOS: RangoPrecio[] = [
-	{ id: "todos", label: "Cualquier precio" },
-	{ id: "bajo", label: "Hasta Bs 1.500", max: 1500 },
-	{ id: "medio", label: "Bs 1.500 – 2.500", min: 1500, max: 2500 },
-	{ id: "alto", label: "Bs 2.500 – 4.000", min: 2500, max: 4000 },
-	{ id: "premium", label: "Más de Bs 4.000", min: 4000 },
-];
+import { TIPOS_INMUEBLE } from "@/lib/catalog";
 
 export function Hero() {
 	const navigate = useNavigate();
 	const [tipo, setTipo] = useState<string>("todos");
-	const [zona, setZona] = useState<string>("todas");
-	const [rango, setRango] = useState<string>("todos");
+	const [zonas, setZonas] = useState<string[]>([]);
+	const [precioMin, setPrecioMin] = useState<number | undefined>(undefined);
+	const [precioMax, setPrecioMax] = useState<number | undefined>(undefined);
+
+	const hayFiltros =
+		tipo !== "todos" ||
+		zonas.length > 0 ||
+		precioMin !== undefined ||
+		precioMax !== undefined;
+
+	function limpiar() {
+		setTipo("todos");
+		setZonas([]);
+		setPrecioMin(undefined);
+		setPrecioMax(undefined);
+	}
 
 	function buscar(evento: React.FormEvent<HTMLFormElement>) {
 		evento.preventDefault();
-		const rangoSel = RANGOS.find((r) => r.id === rango);
+		if (
+			precioMin !== undefined &&
+			precioMax !== undefined &&
+			precioMin > precioMax
+		) {
+			toast.error("Rango de precio inválido", {
+				description: "El monto mínimo no puede ser mayor que el máximo.",
+			});
+			return;
+		}
 		const search: CatalogSearch = {
 			tipo: tipo === "todos" ? undefined : tipo,
-			zona: zona === "todas" ? undefined : zona,
-			precioMin: rangoSel?.min,
-			precioMax: rangoSel?.max,
+			zona: zonas.length > 0 ? zonas : undefined,
+			precioMin,
+			precioMax,
 		};
 		void navigate({ to: "/propiedades", search });
 	}
@@ -70,7 +81,7 @@ export function Hero() {
 					<h1 className="font-display text-4xl leading-[1.05] font-extrabold tracking-tight text-balance text-foreground sm:text-5xl lg:text-6xl">
 						Encuentra tu próximo{" "}
 						<FlipWords
-							words={["hogar", "departamento", "local", "terreno"]}
+							words={["hogar", "departamento", "local"]}
 							className="text-primary"
 						/>{" "}
 						en Potosí
@@ -126,56 +137,63 @@ export function Hero() {
 									/>
 									Zona
 								</Label>
-								<Select value={zona} onValueChange={setZona}>
-									<SelectTrigger id="hero-zona" className="w-full">
-										<SelectValue placeholder="Todas" />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="todas">Todas las zonas</SelectItem>
-										{ZONAS.map((z) => (
-											<SelectItem key={z} value={z}>
-												{z}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+								<ZonePicker
+									id="hero-zona"
+									mode="single"
+									value={zonas}
+									onChange={setZonas}
+									placeholder="Todas las zonas"
+								/>
 							</div>
 
 							<div className="grid gap-1.5">
-								<Label
-									htmlFor="hero-rango"
-									className="text-xs text-muted-foreground"
-								>
+								<Label className="text-xs text-muted-foreground">
 									<Wallet
 										className="size-3.5 text-primary"
 										aria-hidden="true"
 									/>
-									Precio mensual
+									Precio mensual (Bs)
 								</Label>
-								<Select value={rango} onValueChange={setRango}>
-									<SelectTrigger id="hero-rango" className="w-full">
-										<SelectValue placeholder="Cualquier precio" />
-									</SelectTrigger>
-									<SelectContent>
-										{RANGOS.map((r) => (
-											<SelectItem key={r.id} value={r.id}>
-												{r.label}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+								<div className="grid grid-cols-2 gap-2">
+									<CurrencyInput
+										value={precioMin}
+										onChange={setPrecioMin}
+										placeholder="Mínimo"
+										aria-label="Precio mínimo en bolivianos"
+									/>
+									<CurrencyInput
+										value={precioMax}
+										onChange={setPrecioMax}
+										placeholder="Máximo"
+										aria-label="Precio máximo en bolivianos"
+									/>
+								</div>
 							</div>
 						</div>
 
-						<Button
-							type="submit"
-							variant="cta"
-							size="lg"
-							className="mt-4 w-full md:w-auto md:px-8"
-						>
-							<Search aria-hidden="true" />
-							Buscar propiedades
-						</Button>
+						<div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+							<Button
+								type="submit"
+								variant="cta"
+								size="lg"
+								className="w-full sm:w-auto sm:px-8"
+							>
+								<Search aria-hidden="true" />
+								Buscar propiedades
+							</Button>
+							{hayFiltros ? (
+								<Button
+									type="button"
+									variant="ghost"
+									size="lg"
+									onClick={limpiar}
+									className="text-muted-foreground"
+								>
+									<RotateCcw aria-hidden="true" />
+									Limpiar
+								</Button>
+							) : null}
+						</div>
 					</form>
 
 					<dl className="mt-8 flex flex-wrap gap-x-8 gap-y-4">

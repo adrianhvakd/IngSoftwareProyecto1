@@ -16,7 +16,7 @@ import { Route as IngresarRouteImport } from './routes/ingresar'
 import { Route as RegistroRouteImport } from './routes/registro'
 import { Route as VendedorRouteRouteImport } from './routes/vendedor/route'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
-import { Route as AdminAlquileresRouteImport } from './routes/admin/alquileres'
+import { Route as AdminProveedoresRouteImport } from './routes/admin/proveedores'
 import { Route as AdminUsuariosRouteImport } from './routes/admin/usuarios'
 import { Route as AdminVendedoresRouteImport } from './routes/admin/vendedores'
 import { Route as AdminVisitasRouteImport } from './routes/admin/visitas'
@@ -29,8 +29,11 @@ import { Route as VendedorCierreAlquilerRouteImport } from './routes/vendedor/ci
 import { Route as VendedorComisionesRouteImport } from './routes/vendedor/comisiones'
 import { Route as VendedorRegistrarPagoRouteImport } from './routes/vendedor/registrar-pago'
 import { Route as VendedorVisitasRouteImport } from './routes/vendedor/visitas'
+import { Route as AdminAlquileresIndexRouteImport } from './routes/admin/alquileres/index'
+import { Route as AdminAlquileresNuevoRouteImport } from './routes/admin/alquileres/nuevo'
 import { Route as AdminInmueblesIndexRouteImport } from './routes/admin/inmuebles/index'
 import { Route as AdminInmueblesNuevoRouteImport } from './routes/admin/inmuebles/nuevo'
+import { Route as AdminInmueblesIdEditarRouteImport } from './routes/admin/inmuebles/$id/editar'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -67,9 +70,9 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminRouteRoute,
 } as any)
-const AdminAlquileresRoute = AdminAlquileresRouteImport.update({
-  id: '/alquileres',
-  path: '/alquileres',
+const AdminProveedoresRoute = AdminProveedoresRouteImport.update({
+  id: '/proveedores',
+  path: '/proveedores',
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminUsuariosRoute = AdminUsuariosRouteImport.update({
@@ -132,6 +135,16 @@ const VendedorVisitasRoute = VendedorVisitasRouteImport.update({
   path: '/visitas',
   getParentRoute: () => VendedorRouteRoute,
 } as any)
+const AdminAlquileresIndexRoute = AdminAlquileresIndexRouteImport.update({
+  id: '/alquileres/',
+  path: '/alquileres/',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminAlquileresNuevoRoute = AdminAlquileresNuevoRouteImport.update({
+  id: '/alquileres/nuevo',
+  path: '/alquileres/nuevo',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
 const AdminInmueblesIndexRoute = AdminInmueblesIndexRouteImport.update({
   id: '/inmuebles/',
   path: '/inmuebles/',
@@ -142,6 +155,11 @@ const AdminInmueblesNuevoRoute = AdminInmueblesNuevoRouteImport.update({
   path: '/inmuebles/nuevo',
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const AdminInmueblesIdEditarRoute = AdminInmueblesIdEditarRouteImport.update({
+  id: '/inmuebles/$id/editar',
+  path: '/inmuebles/$id/editar',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -150,7 +168,7 @@ export interface FileRoutesByFullPath {
   '/vendedor': typeof VendedorRouteRouteWithChildren
   '/ingresar': typeof IngresarRoute
   '/registro': typeof RegistroRoute
-  '/admin/alquileres': typeof AdminAlquileresRoute
+  '/admin/proveedores': typeof AdminProveedoresRoute
   '/admin/usuarios': typeof AdminUsuariosRoute
   '/admin/vendedores': typeof AdminVendedoresRoute
   '/admin/visitas': typeof AdminVisitasRoute
@@ -164,14 +182,17 @@ export interface FileRoutesByFullPath {
   '/cliente/': typeof ClienteIndexRoute
   '/propiedades/': typeof PropiedadesIndexRoute
   '/vendedor/': typeof VendedorIndexRoute
+  '/admin/alquileres/nuevo': typeof AdminAlquileresNuevoRoute
   '/admin/inmuebles/nuevo': typeof AdminInmueblesNuevoRoute
+  '/admin/alquileres/': typeof AdminAlquileresIndexRoute
   '/admin/inmuebles/': typeof AdminInmueblesIndexRoute
+  '/admin/inmuebles/$id/editar': typeof AdminInmueblesIdEditarRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/ingresar': typeof IngresarRoute
   '/registro': typeof RegistroRoute
-  '/admin/alquileres': typeof AdminAlquileresRoute
+  '/admin/proveedores': typeof AdminProveedoresRoute
   '/admin/usuarios': typeof AdminUsuariosRoute
   '/admin/vendedores': typeof AdminVendedoresRoute
   '/admin/visitas': typeof AdminVisitasRoute
@@ -185,8 +206,11 @@ export interface FileRoutesByTo {
   '/cliente': typeof ClienteIndexRoute
   '/propiedades': typeof PropiedadesIndexRoute
   '/vendedor': typeof VendedorIndexRoute
+  '/admin/alquileres/nuevo': typeof AdminAlquileresNuevoRoute
   '/admin/inmuebles/nuevo': typeof AdminInmueblesNuevoRoute
+  '/admin/alquileres': typeof AdminAlquileresIndexRoute
   '/admin/inmuebles': typeof AdminInmueblesIndexRoute
+  '/admin/inmuebles/$id/editar': typeof AdminInmueblesIdEditarRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -196,7 +220,7 @@ export interface FileRoutesById {
   '/vendedor': typeof VendedorRouteRouteWithChildren
   '/ingresar': typeof IngresarRoute
   '/registro': typeof RegistroRoute
-  '/admin/alquileres': typeof AdminAlquileresRoute
+  '/admin/proveedores': typeof AdminProveedoresRoute
   '/admin/usuarios': typeof AdminUsuariosRoute
   '/admin/vendedores': typeof AdminVendedoresRoute
   '/admin/visitas': typeof AdminVisitasRoute
@@ -210,8 +234,11 @@ export interface FileRoutesById {
   '/cliente/': typeof ClienteIndexRoute
   '/propiedades/': typeof PropiedadesIndexRoute
   '/vendedor/': typeof VendedorIndexRoute
+  '/admin/alquileres/nuevo': typeof AdminAlquileresNuevoRoute
   '/admin/inmuebles/nuevo': typeof AdminInmueblesNuevoRoute
+  '/admin/alquileres/': typeof AdminAlquileresIndexRoute
   '/admin/inmuebles/': typeof AdminInmueblesIndexRoute
+  '/admin/inmuebles/$id/editar': typeof AdminInmueblesIdEditarRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -222,7 +249,7 @@ export interface FileRouteTypes {
     | '/vendedor'
     | '/ingresar'
     | '/registro'
-    | '/admin/alquileres'
+    | '/admin/proveedores'
     | '/admin/usuarios'
     | '/admin/vendedores'
     | '/admin/visitas'
@@ -236,14 +263,17 @@ export interface FileRouteTypes {
     | '/cliente/'
     | '/propiedades/'
     | '/vendedor/'
+    | '/admin/alquileres/nuevo'
     | '/admin/inmuebles/nuevo'
+    | '/admin/alquileres/'
     | '/admin/inmuebles/'
+    | '/admin/inmuebles/$id/editar'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/ingresar'
     | '/registro'
-    | '/admin/alquileres'
+    | '/admin/proveedores'
     | '/admin/usuarios'
     | '/admin/vendedores'
     | '/admin/visitas'
@@ -257,8 +287,11 @@ export interface FileRouteTypes {
     | '/cliente'
     | '/propiedades'
     | '/vendedor'
+    | '/admin/alquileres/nuevo'
     | '/admin/inmuebles/nuevo'
+    | '/admin/alquileres'
     | '/admin/inmuebles'
+    | '/admin/inmuebles/$id/editar'
   id:
     | '__root__'
     | '/'
@@ -267,7 +300,7 @@ export interface FileRouteTypes {
     | '/vendedor'
     | '/ingresar'
     | '/registro'
-    | '/admin/alquileres'
+    | '/admin/proveedores'
     | '/admin/usuarios'
     | '/admin/vendedores'
     | '/admin/visitas'
@@ -281,8 +314,11 @@ export interface FileRouteTypes {
     | '/cliente/'
     | '/propiedades/'
     | '/vendedor/'
+    | '/admin/alquileres/nuevo'
     | '/admin/inmuebles/nuevo'
+    | '/admin/alquileres/'
     | '/admin/inmuebles/'
+    | '/admin/inmuebles/$id/editar'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -347,11 +383,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRouteRoute
     }
-    '/admin/alquileres': {
-      id: '/admin/alquileres'
-      path: '/alquileres'
-      fullPath: '/admin/alquileres'
-      preLoaderRoute: typeof AdminAlquileresRouteImport
+    '/admin/proveedores': {
+      id: '/admin/proveedores'
+      path: '/proveedores'
+      fullPath: '/admin/proveedores'
+      preLoaderRoute: typeof AdminProveedoresRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     '/admin/usuarios': {
@@ -438,6 +474,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof VendedorVisitasRouteImport
       parentRoute: typeof VendedorRouteRoute
     }
+    '/admin/alquileres/': {
+      id: '/admin/alquileres/'
+      path: '/alquileres'
+      fullPath: '/admin/alquileres/'
+      preLoaderRoute: typeof AdminAlquileresIndexRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/alquileres/nuevo': {
+      id: '/admin/alquileres/nuevo'
+      path: '/alquileres/nuevo'
+      fullPath: '/admin/alquileres/nuevo'
+      preLoaderRoute: typeof AdminAlquileresNuevoRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
     '/admin/inmuebles/': {
       id: '/admin/inmuebles/'
       path: '/inmuebles'
@@ -452,27 +502,40 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminInmueblesNuevoRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/admin/inmuebles/$id/editar': {
+      id: '/admin/inmuebles/$id/editar'
+      path: '/inmuebles/$id/editar'
+      fullPath: '/admin/inmuebles/$id/editar'
+      preLoaderRoute: typeof AdminInmueblesIdEditarRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
   }
 }
 
 interface AdminRouteRouteChildren {
-  AdminAlquileresRoute: typeof AdminAlquileresRoute
+  AdminProveedoresRoute: typeof AdminProveedoresRoute
   AdminUsuariosRoute: typeof AdminUsuariosRoute
   AdminVendedoresRoute: typeof AdminVendedoresRoute
   AdminVisitasRoute: typeof AdminVisitasRoute
   AdminIndexRoute: typeof AdminIndexRoute
+  AdminAlquileresNuevoRoute: typeof AdminAlquileresNuevoRoute
   AdminInmueblesNuevoRoute: typeof AdminInmueblesNuevoRoute
+  AdminAlquileresIndexRoute: typeof AdminAlquileresIndexRoute
   AdminInmueblesIndexRoute: typeof AdminInmueblesIndexRoute
+  AdminInmueblesIdEditarRoute: typeof AdminInmueblesIdEditarRoute
 }
 
 const AdminRouteRouteChildren: AdminRouteRouteChildren = {
-  AdminAlquileresRoute: AdminAlquileresRoute,
+  AdminProveedoresRoute: AdminProveedoresRoute,
   AdminUsuariosRoute: AdminUsuariosRoute,
   AdminVendedoresRoute: AdminVendedoresRoute,
   AdminVisitasRoute: AdminVisitasRoute,
   AdminIndexRoute: AdminIndexRoute,
+  AdminAlquileresNuevoRoute: AdminAlquileresNuevoRoute,
   AdminInmueblesNuevoRoute: AdminInmueblesNuevoRoute,
+  AdminAlquileresIndexRoute: AdminAlquileresIndexRoute,
   AdminInmueblesIndexRoute: AdminInmueblesIndexRoute,
+  AdminInmueblesIdEditarRoute: AdminInmueblesIdEditarRoute,
 }
 
 const AdminRouteRouteWithChildren = AdminRouteRoute._addFileChildren(

@@ -34,6 +34,9 @@
   --blue-deep: #002870;
   --blue-soft: #eaf0fb;
 
+  /* Texto/iconos azules sobre fondos que cambian de tema */
+  --brand-text: #003da5;
+
   --destructive: #b42318; /* acciones destructivas: siempre outline/soft + icono + diálogo de confirmación */
   --destructive-foreground: #ffffff;
 
@@ -69,6 +72,57 @@
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
+/* Modo oscuro: clara de tokens. El rojo sigue siendo solo CTA. */
+.dark {
+  --background: #0b1220;
+  --foreground: #e6edf7;
+  --card: #111b2e;
+  --card-foreground: #e6edf7;
+  --popover: #111b2e;
+  --popover-foreground: #e6edf7;
+  --primary: #2f66d0;
+  --primary-foreground: #ffffff;
+  --brand-text: #7fa6f0;
+  --secondary: #16213a;
+  --secondary-foreground: #e6edf7;
+  --muted: #16213a;
+  --muted-foreground: #94a3b8;
+  --accent: #172a4d;
+  --accent-foreground: #bfd3f8;
+  --cta: #dc1c2d;
+  --cta-hover: #e8303f;
+  --cta-foreground: #ffffff;
+  --blue-soft: #14233f;
+  --blue-dark: #0a1f4d;
+  --blue-deep: #7fa6f0;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --success: #4ade80;
+  --success-soft: #12301f;
+  --warning: #fbbf24;
+  --warning-soft: #33260c;
+  --border: #22304a;
+  --input: #22304a;
+  --ring: #5b8def;
+  --chart-1: #5b8def;
+  --chart-2: #3b6fd4;
+  --chart-3: #64748b;
+  --chart-4: #ef4444;
+  --chart-5: #a5c0f5;
+  --sidebar: #111b2e;
+  --sidebar-foreground: #e6edf7;
+  --sidebar-primary: #2f66d0;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #172a4d;
+  --sidebar-accent-foreground: #bfd3f8;
+  --sidebar-border: #22304a;
+  --sidebar-ring: #5b8def;
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px -6px rgba(0, 0, 0, 0.5);
+  --shadow-lift: 0 2px 4px rgba(0, 0, 0, 0.4),
+    0 12px 32px -12px rgba(0, 0, 0, 0.65);
+  color-scheme: dark;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -90,6 +144,7 @@
   --color-blue-dark: var(--blue-dark);
   --color-blue-deep: var(--blue-deep);
   --color-blue-soft: var(--blue-soft);
+  --color-brand-text: var(--brand-text);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-success: var(--success);
@@ -188,6 +243,14 @@
     background-color: #cbd5e1;
     border-radius: 9999px;
   }
+
+  .dark * {
+    scrollbar-color: #334155 transparent;
+  }
+
+  .dark *::-webkit-scrollbar-thumb {
+    background-color: #334155;
+  }
 }
 
 @utility container-page {
@@ -270,6 +333,19 @@
     margin: 0 !important;
     padding: 0 !important;
     max-width: 100% !important;
+    background: #ffffff !important;
+    color: #111111 !important;
+  }
+
+  /* La hoja del contrato siempre en papel (blanco y negro), aun en modo oscuro */
+  :root,
+  .dark {
+    --background: #ffffff;
+    --foreground: #111111;
+    --card: #ffffff;
+    --card-foreground: #111111;
+    --muted-foreground: #444444;
+    --border: #dddddd;
   }
 
   body {
@@ -278,5 +354,21 @@
 
   @page {
     margin: 18mm;
+  }
+
+  /* Imprimir solo la tarjeta de credenciales cuando se solicita */
+  body.printing-credentials > * {
+    visibility: hidden;
+  }
+
+  body.printing-credentials #credentials-print,
+  body.printing-credentials #credentials-print * {
+    visibility: visible;
+  }
+
+  body.printing-credentials #credentials-print {
+    position: fixed;
+    inset: 0;
+    margin: 24mm;
   }
 }

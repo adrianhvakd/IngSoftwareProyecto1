@@ -3,6 +3,7 @@ import { cn } from "cn";
 import { Menu, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Logo } from "@/components/brand/logo";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
 	Sheet,
@@ -73,6 +74,7 @@ export function PublicNavbar() {
 				</ul>
 
 				<div className="flex items-center gap-2">
+					<ThemeToggle />
 					<Button
 						asChild
 						variant="ghost"
@@ -130,6 +132,7 @@ export function PublicNavbar() {
 							</ul>
 
 							<div className="mt-auto flex flex-col gap-2 px-4 pb-6">
+								<ThemeToggle variant="inline" />
 								<Button
 									asChild
 									variant="outline"

@@ -69,3 +69,29 @@ export function BalloonMotif({ className, opacity = 0.12 }: BalloonMotifProps) {
 		</svg>
 	);
 }
+
+/**
+ * Banda decorativa con globos de marca, pensada para móvil antes del pie de
+ * página. Solo usa `transform`/`opacity` y respeta `prefers-reduced-motion`.
+ */
+export function BalloonDecor() {
+	return (
+		<div
+			aria-hidden="true"
+			className="relative h-32 overflow-hidden bg-gradient-to-b from-transparent to-blue-soft/60 sm:hidden"
+		>
+			<BalloonMotif
+				className="absolute -bottom-8 left-5 w-20 animate-float"
+				opacity={0.2}
+			/>
+			<BalloonMotif
+				className="absolute -bottom-12 left-1/2 w-28 -translate-x-1/2 animate-float"
+				opacity={0.26}
+			/>
+			<BalloonMotif
+				className="absolute -bottom-6 right-5 w-24 animate-float"
+				opacity={0.18}
+			/>
+		</div>
+	);
+}

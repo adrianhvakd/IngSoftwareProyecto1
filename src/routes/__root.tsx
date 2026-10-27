@@ -6,6 +6,10 @@ import {
 } from "@tanstack/react-router";
 import { ErrorPage } from "@/components/system/error-page";
 import { NotFoundPage } from "@/components/system/not-found-page";
+import {
+	THEME_INLINE_SCRIPT,
+	ThemeProvider,
+} from "@/components/theme/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import appCss from "../styles.css?url";
@@ -24,7 +28,7 @@ export const Route = createRootRoute({
 			{
 				name: "description",
 				content:
-					"Portal de gestión y alquiler de inmuebles en Potosí, Bolivia. Encuentra casas, departamentos, locales y terrenos, agenda visitas y gestiona tus cuotas mensuales.",
+					"Portal de gestión y alquiler de inmuebles en Potosí, Bolivia. Encuentra casas, departamentos y locales, agenda visitas y gestiona tus cuotas mensuales.",
 			},
 			{ name: "theme-color", content: "#003DA5" },
 			{ name: "robots", content: "noindex, nofollow" },
@@ -37,7 +41,7 @@ export const Route = createRootRoute({
 			{
 				property: "og:description",
 				content:
-					"Casas, departamentos, locales y terrenos en alquiler en Potosí. Visitas, contratos y cobros mensuales en un solo lugar.",
+					"Casas, departamentos y locales en alquiler en Potosí. Visitas, contratos y cobros mensuales en un solo lugar.",
 			},
 			{ property: "og:image", content: "/og-image.svg" },
 			{ property: "og:locale", content: "es_BO" },
@@ -50,8 +54,13 @@ export const Route = createRootRoute({
 		],
 		links: [
 			{ rel: "stylesheet", href: appCss },
-			{ rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
-			{ rel: "apple-touch-icon", href: "/favicon.svg" },
+			{ rel: "icon", href: "/logo_remax.ico", type: "image/x-icon" },
+			{ rel: "shortcut icon", href: "/logo_remax.ico" },
+			{
+				rel: "apple-touch-icon",
+				href: "/apple-touch-icon.png",
+				sizes: "180x180",
+			},
 		],
 	}),
 	component: RootDocument,
@@ -60,16 +69,23 @@ export const Route = createRootRoute({
 });
 
 function RootDocument() {
+	// El script anti-flash añade class="dark" y color-scheme antes de hidratar;
+	// suppressHydrationWarning evita el falso positivo de React en <html>.
 	return (
-		<html lang="es-BO">
+		<html lang="es-BO" suppressHydrationWarning>
 			<head>
 				<HeadContent />
+				{/* Evita el flash de tema: aplica .dark antes de hidratar */}
+				{/* biome-ignore lint/security/noDangerouslySetInnerHtml: script inline necesario para evitar el flash de tema antes de la hidratación */}
+				<script dangerouslySetInnerHTML={{ __html: THEME_INLINE_SCRIPT }} />
 			</head>
 			<body className="bg-background text-foreground antialiased">
-				<TooltipProvider delayDuration={200}>
-					<Outlet />
-				</TooltipProvider>
-				<Toaster position="top-right" richColors closeButton />
+				<ThemeProvider>
+					<TooltipProvider delayDuration={200}>
+						<Outlet />
+					</TooltipProvider>
+					<Toaster position="top-right" richColors closeButton />
+				</ThemeProvider>
 				<Scripts />
 			</body>
 		</html>

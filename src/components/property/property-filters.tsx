@@ -1,20 +1,15 @@
 import { useNavigate } from "@tanstack/react-router";
 import { cn } from "cn";
 import { RotateCcw, Search } from "lucide-react";
+import { CurrencyInput } from "@/components/common/currency-input";
+import { ZonePicker } from "@/components/pickers/zone-picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { CatalogSearch } from "@/lib/catalog";
-import { TIPOS_INMUEBLE, ZONAS } from "@/lib/catalog";
+import { TIPOS_INMUEBLE } from "@/lib/catalog";
 
 interface PropertyFiltersProps {
 	search: CatalogSearch;
@@ -88,7 +83,13 @@ export function PropertyFilters({
 							<button
 								key={tipo}
 								type="button"
-								onClick={() => actualizar({ tipo })}
+								onClick={() =>
+									actualizar(
+										tipo === "Local"
+											? { tipo, habitaciones: undefined }
+											: { tipo },
+									)
+								}
 								aria-pressed={activo}
 								className={cn(
 									"rounded-full border px-3 py-1.5 text-sm font-medium transition-colors duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
@@ -108,24 +109,15 @@ export function PropertyFilters({
 
 			<div className="grid gap-2">
 				<Label htmlFor="filtro-zona">Zona</Label>
-				<Select
-					value={search.zona ?? "todas"}
-					onValueChange={(valor) =>
-						actualizar({ zona: valor === "todas" ? undefined : valor })
+				<ZonePicker
+					id="filtro-zona"
+					mode="multiple"
+					value={search.zona ?? []}
+					onChange={(zonas) =>
+						actualizar({ zona: zonas.length > 0 ? zonas : undefined })
 					}
-				>
-					<SelectTrigger id="filtro-zona" className="w-full">
-						<SelectValue placeholder="Todas las zonas" />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="todas">Todas las zonas</SelectItem>
-						{ZONAS.map((zona) => (
-							<SelectItem key={zona} value={zona}>
-								{zona}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
+					placeholder="Todas las zonas"
+				/>
 			</div>
 
 			<Separator />
@@ -142,22 +134,12 @@ export function PropertyFilters({
 						>
 							Mínimo
 						</Label>
-						<Input
+						<CurrencyInput
 							id="filtro-min"
-							type="number"
-							inputMode="numeric"
-							min={0}
-							step={100}
-							value={search.precioMin ?? ""}
-							onChange={(e) =>
-								actualizar({
-									precioMin: e.target.value
-										? Number(e.target.value)
-										: undefined,
-								})
-							}
+							value={search.precioMin}
+							onChange={(valor) => actualizar({ precioMin: valor })}
 							placeholder="0"
-							className="tabular"
+							aria-label="Precio mínimo en bolivianos"
 						/>
 					</div>
 					<div className="grid gap-1.5">
@@ -167,22 +149,12 @@ export function PropertyFilters({
 						>
 							Máximo
 						</Label>
-						<Input
+						<CurrencyInput
 							id="filtro-max"
-							type="number"
-							inputMode="numeric"
-							min={0}
-							step={100}
-							value={search.precioMax ?? ""}
-							onChange={(e) =>
-								actualizar({
-									precioMax: e.target.value
-										? Number(e.target.value)
-										: undefined,
-								})
-							}
+							value={search.precioMax}
+							onChange={(valor) => actualizar({ precioMax: valor })}
 							placeholder="Sin límite"
-							className="tabular"
+							aria-label="Precio máximo en bolivianos"
 						/>
 					</div>
 				</div>
@@ -190,30 +162,37 @@ export function PropertyFilters({
 
 			<Separator />
 
-			<fieldset className="grid gap-3">
-				<legend className="text-sm font-semibold text-foreground">
-					Habitaciones mínimas
-				</legend>
-				<ToggleGroup
-					type="single"
-					value={search.habitaciones ? String(search.habitaciones) : ""}
-					onValueChange={(valor) =>
-						actualizar({ habitaciones: valor ? Number(valor) : undefined })
-					}
-					variant="outline"
-					className="justify-start"
-				>
-					{[1, 2, 3, 4].map((n) => (
-						<ToggleGroupItem
-							key={n}
-							value={String(n)}
-							aria-label={`${n} o más habitaciones`}
-						>
-							{n}+
-						</ToggleGroupItem>
-					))}
-				</ToggleGroup>
-			</fieldset>
+			{search.tipo === "Local" ? (
+				<p className="rounded-lg border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
+					Los locales no se filtran por habitaciones. Las condiciones de cada
+					local se detallan en su publicación.
+				</p>
+			) : (
+				<fieldset className="grid gap-3">
+					<legend className="text-sm font-semibold text-foreground">
+						Habitaciones mínimas
+					</legend>
+					<ToggleGroup
+						type="single"
+						value={search.habitaciones ? String(search.habitaciones) : ""}
+						onValueChange={(valor) =>
+							actualizar({ habitaciones: valor ? Number(valor) : undefined })
+						}
+						variant="outline"
+						className="justify-start"
+					>
+						{[1, 2, 3, 4].map((n) => (
+							<ToggleGroupItem
+								key={n}
+								value={String(n)}
+								aria-label={`${n} o más habitaciones`}
+							>
+								{n}+
+							</ToggleGroupItem>
+						))}
+					</ToggleGroup>
+				</fieldset>
+			)}
 
 			<Separator />
 

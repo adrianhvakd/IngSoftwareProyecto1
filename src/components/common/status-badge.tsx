@@ -12,7 +12,7 @@ export type Tone =
 	| "muted";
 
 const toneClasses: Record<Tone, string> = {
-	neutral: "border-border bg-secondary text-slate-600",
+	neutral: "border-border bg-secondary text-muted-foreground",
 	info: "border-primary/20 bg-blue-soft text-blue-deep",
 	success: "border-emerald-200 bg-success-soft text-success",
 	warning: "border-amber-200 bg-warning-soft text-warning",
@@ -61,8 +61,9 @@ export function StatusBadge({
 
 export const inmuebleTone: Record<string, Tone> = {
 	Disponible: "success",
+	Reservado: "warning",
 	"En alquiler": "info",
-	Destacado: "cta",
+	Inactivo: "muted",
 };
 
 export const visitaTone: Record<string, Tone> = {
