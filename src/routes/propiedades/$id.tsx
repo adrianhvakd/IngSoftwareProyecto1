@@ -25,15 +25,18 @@ import { PropertyGallery } from "@/components/property/property-gallery";
 import { VisitScheduler } from "@/components/property/visit-scheduler";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import {
-	getInmueble,
-	getInmueblesSimilares,
-	getProveedor,
-	getVendedor,
-} from "@/data";
 import { formatBsMes, formatFechaLarga, iniciales } from "@/lib/format";
+import { obtenerDetalleInmueble } from "@/server/catalogo";
+import type { AgenteResumen } from "@/types/domain";
 
 export const Route = createFileRoute("/propiedades/$id")({
+	loader: async ({ params }) => {
+		try {
+			return await obtenerDetalleInmueble({ data: { id: params.id } });
+		} catch {
+			return null;
+		}
+	},
 	head: () => ({
 		meta: [
 			{ title: "Detalle del inmueble · RE/MAX Potosí" },
@@ -48,10 +51,9 @@ export const Route = createFileRoute("/propiedades/$id")({
 });
 
 function DetallePage() {
-	const { id } = Route.useParams();
-	const inmueble = getInmueble(id);
+	const datos = Route.useLoaderData();
 
-	if (!inmueble) {
+	if (!datos) {
 		return (
 			<PublicLayout>
 				<div className="container-page py-16">
@@ -73,9 +75,19 @@ function DetallePage() {
 		);
 	}
 
-	const agente = getVendedor(inmueble.vendedorId);
-	const proveedor = getProveedor(inmueble.proveedorId);
-	const similares = getInmueblesSimilares(inmueble, 3);
+	const { inmueble, agenteNombre, proveedorNombre, similares } = datos;
+	// La vista pública solo expone el nombre del agente; el contacto se
+	// comparte al agendar la visita o con el equipo de la oficina.
+	const agente: AgenteResumen | undefined = agenteNombre
+		? {
+				nombre: agenteNombre,
+				cargo: "Agente RE/MAX Potosí",
+				zona: null,
+				email: null,
+				telefono: null,
+				avatarUrl: null,
+			}
+		: undefined;
 
 	const especificaciones = [
 		{
@@ -244,7 +256,7 @@ function DetallePage() {
 										<div className="flex items-center gap-4">
 											<Avatar className="size-14 ring-2 ring-blue-soft">
 												<AvatarImage
-													src={agente.avatarUrl}
+													src={agente.avatarUrl ?? undefined}
 													alt={agente.nombre}
 												/>
 												<AvatarFallback className="bg-blue-soft text-primary">
@@ -256,36 +268,51 @@ function DetallePage() {
 													{agente.nombre}
 												</p>
 												<p className="text-sm text-muted-foreground">
-													{agente.cargo} · {agente.zona}
+													{agente.cargo}
+													{agente.zona ? ` · ${agente.zona}` : ""}
 												</p>
-												<div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
-													<span className="inline-flex items-center gap-1.5">
-														<Phone
-															className="size-3.5 text-primary/70"
-															aria-hidden="true"
-														/>
-														<span className="tabular">{agente.telefono}</span>
-													</span>
-													<span className="inline-flex items-center gap-1.5">
-														<Mail
-															className="size-3.5 text-primary/70"
-															aria-hidden="true"
-														/>
-														{agente.email}
-													</span>
-												</div>
+												{agente.telefono || agente.email ? (
+													<div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+														{agente.telefono ? (
+															<span className="inline-flex items-center gap-1.5">
+																<Phone
+																	className="size-3.5 text-primary/70"
+																	aria-hidden="true"
+																/>
+																<span className="tabular">
+																	{agente.telefono}
+																</span>
+															</span>
+														) : null}
+														{agente.email ? (
+															<span className="inline-flex items-center gap-1.5">
+																<Mail
+																	className="size-3.5 text-primary/70"
+																	aria-hidden="true"
+																/>
+																{agente.email}
+															</span>
+														) : null}
+													</div>
+												) : (
+													<p className="mt-1 text-sm text-muted-foreground">
+														El contacto se comparte al agendar la visita.
+													</p>
+												)}
 											</div>
 										</div>
-										<Button asChild variant="outline">
-											<a href={`tel:${agente.telefono.replace(/\s/g, "")}`}>
-												<Phone aria-hidden="true" />
-												Llamar al agente
-											</a>
-										</Button>
+										{agente.telefono ? (
+											<Button asChild variant="outline">
+												<a href={`tel:${agente.telefono.replace(/\s/g, "")}`}>
+													<Phone aria-hidden="true" />
+													Llamar al agente
+												</a>
+											</Button>
+										) : null}
 									</div>
-									{proveedor ? (
+									{proveedorNombre ? (
 										<p className="mt-4 border-t border-border pt-4 text-xs text-muted-foreground">
-											Propietario: {proveedor.nombre} · Administrado por RE/MAX
+											Propietario: {proveedorNombre} · Administrado por RE/MAX
 											Potosí.
 										</p>
 									) : null}

@@ -1,6 +1,6 @@
 import { cn } from "cn";
 import { Check, MapPin, Search, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import {
 	Popover,
@@ -14,9 +14,9 @@ import {
 	SheetTitle,
 	SheetTrigger,
 } from "@/components/ui/sheet";
-import { getZonasConConteo } from "@/data";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { SECTORES, ZONAS_POPULARES, type Zona } from "@/lib/catalog";
+import type { ZonaOpcion } from "@/lib/catalog";
+import { listarZonas } from "@/server/catalogo";
 
 interface ZonePickerProps {
 	mode?: "single" | "multiple";
@@ -28,6 +28,11 @@ interface ZonePickerProps {
 	disabled?: boolean;
 	/** Oculta los chips resumen (útil cuando el consumidor los muestra aparte). */
 	hideChips?: boolean;
+	/**
+	 * Zonas ya cargadas por la ruta. Si se omiten, el picker las pide a la
+	 * server function; así el catálogo evita una petición extra.
+	 */
+	zonas?: ZonaOpcion[];
 }
 
 function DisparadorContenido({
@@ -38,23 +43,51 @@ function DisparadorContenido({
 	setQuery,
 	toggle,
 	limpiar,
+	cargando,
+	error,
 }: {
 	value: string[];
 	mode: "single" | "multiple";
-	zonas: { zona: string; total: number }[];
+	zonas: ZonaOpcion[];
 	query: string;
 	setQuery: (v: string) => void;
 	toggle: (zona: string) => void;
 	limpiar: () => void;
+	cargando: boolean;
+	error: boolean;
 }) {
 	const normalizado = query.trim().toLowerCase();
-	const conteo = new Map(zonas.map((z) => [z.zona, z.total]));
-	const grupos = SECTORES.map((grupo) => ({
-		sector: grupo.sector,
-		zonas: grupo.zonas.filter(
-			(z) => normalizado === "" || z.toLowerCase().includes(normalizado),
-		),
-	})).filter((g) => g.zonas.length > 0);
+
+	const grupos = useMemo(() => {
+		const mapa = new Map<string, ZonaOpcion[]>();
+		for (const zona of zonas) {
+			if (
+				normalizado !== "" &&
+				!zona.nombre.toLowerCase().includes(normalizado)
+			) {
+				continue;
+			}
+			const sector = zona.sector || "Otras zonas";
+			const lista = mapa.get(sector) ?? [];
+			lista.push(zona);
+			mapa.set(sector, lista);
+		}
+		return [...mapa.entries()].map(([sector, lista]) => ({
+			sector,
+			zonas: lista,
+		}));
+	}, [zonas, normalizado]);
+
+	const populares = useMemo(
+		() =>
+			[...zonas]
+				.filter((zona) => zona.total > 0)
+				.sort(
+					(a, b) => b.total - a.total || a.nombre.localeCompare(b.nombre, "es"),
+				)
+				.slice(0, 3),
+		[zonas],
+	);
 
 	return (
 		<div className="flex max-h-[60vh] flex-col">
@@ -72,19 +105,19 @@ function DisparadorContenido({
 				/>
 			</div>
 
-			{ZONAS_POPULARES.length > 0 && normalizado === "" ? (
+			{populares.length > 0 && normalizado === "" ? (
 				<div className="shrink-0 px-3 pb-2">
 					<p className="mb-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
 						Zonas populares
 					</p>
 					<div className="flex flex-wrap gap-1.5">
-						{ZONAS_POPULARES.map((zona) => {
-							const activa = value.includes(zona);
+						{populares.map((zona) => {
+							const activa = value.includes(zona.nombre);
 							return (
 								<button
-									key={zona}
+									key={zona.nombre}
 									type="button"
-									onClick={() => toggle(zona)}
+									onClick={() => toggle(zona.nombre)}
 									aria-pressed={activa}
 									className={cn(
 										"rounded-full border px-2.5 py-1 text-xs font-medium transition-colors duration-150 ease-out",
@@ -93,7 +126,7 @@ function DisparadorContenido({
 											: "border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground",
 									)}
 								>
-									{zona}
+									{zona.nombre}
 								</button>
 							);
 						})}
@@ -113,7 +146,15 @@ function DisparadorContenido({
 					</button>
 				) : null}
 
-				{grupos.length === 0 ? (
+				{cargando ? (
+					<p className="px-3 py-6 text-center text-sm text-muted-foreground">
+						Cargando zonas…
+					</p>
+				) : error ? (
+					<p className="px-3 py-6 text-center text-sm text-muted-foreground">
+						No se pudieron cargar las zonas. Cierra y vuelve a intentarlo.
+					</p>
+				) : grupos.length === 0 ? (
 					<p className="px-3 py-6 text-center text-sm text-muted-foreground">
 						Sin zonas que coincidan.
 					</p>
@@ -124,12 +165,12 @@ function DisparadorContenido({
 								{grupo.sector}
 							</p>
 							{grupo.zonas.map((zona) => {
-								const seleccionada = value.includes(zona);
+								const seleccionada = value.includes(zona.nombre);
 								return (
 									<button
-										key={zona}
+										key={zona.nombre}
 										type="button"
-										onClick={() => toggle(zona)}
+										onClick={() => toggle(zona.nombre)}
 										aria-pressed={seleccionada}
 										className={cn(
 											"flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm transition-colors duration-150 ease-out",
@@ -150,9 +191,9 @@ function DisparadorContenido({
 												<Check className="size-3" aria-hidden="true" />
 											) : null}
 										</span>
-										<span className="flex-1">{zona}</span>
+										<span className="flex-1">{zona.nombre}</span>
 										<span className="tabular text-xs text-muted-foreground">
-											{conteo.get(zona) ?? 0}
+											{zona.total}
 										</span>
 									</button>
 								);
@@ -174,11 +215,45 @@ export function ZonePicker({
 	className,
 	disabled,
 	hideChips,
+	zonas: zonasProp,
 }: ZonePickerProps) {
 	const isMobile = useIsMobile();
 	const [open, setOpen] = useState(false);
 	const [query, setQuery] = useState("");
-	const zonas = useMemo(() => getZonasConConteo(), []);
+	const [zonasRemotas, setZonasRemotas] = useState<ZonaOpcion[]>([]);
+	const [cargandoZonas, setCargandoZonas] = useState(!zonasProp);
+	const [errorZonas, setErrorZonas] = useState(false);
+
+	useEffect(() => {
+		if (zonasProp) {
+			setCargandoZonas(false);
+			setErrorZonas(false);
+			return;
+		}
+
+		let vigente = true;
+		setCargandoZonas(true);
+		setErrorZonas(false);
+
+		listarZonas()
+			.then((zonas) => {
+				if (!vigente) return;
+				setZonasRemotas(zonas);
+			})
+			.catch(() => {
+				if (!vigente) return;
+				setErrorZonas(true);
+			})
+			.finally(() => {
+				if (vigente) setCargandoZonas(false);
+			});
+
+		return () => {
+			vigente = false;
+		};
+	}, [zonasProp]);
+
+	const zonas = zonasProp ?? zonasRemotas;
 
 	function toggle(zona: string) {
 		if (mode === "single") {
@@ -202,7 +277,7 @@ export function ZonePicker({
 		value.length === 0
 			? (placeholder ?? "Todas las zonas")
 			: mode === "single"
-				? (value[0] as Zona)
+				? value[0]
 				: `${value.length} zona${value.length > 1 ? "s" : ""}`;
 
 	const disparador = (
@@ -243,6 +318,8 @@ export function ZonePicker({
 			setQuery={setQuery}
 			toggle={toggle}
 			limpiar={limpiar}
+			cargando={cargandoZonas}
+			error={errorZonas}
 		/>
 	);
 

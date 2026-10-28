@@ -5,46 +5,15 @@ import {
 	ChartTooltip,
 	ChartTooltipContent,
 } from "@/components/ui/chart";
-import { pagos } from "@/data/pagos";
 import { formatBs, formatNumber } from "@/lib/format";
+import type { PuntoIngresoAdmin } from "@/types/admin";
 
 const config = {
 	cobrado: { label: "Cobrado", color: "var(--chart-1)" },
 	comisiones: { label: "Comisiones", color: "var(--chart-4)" },
 } satisfies ChartConfig;
 
-const MESES = [
-	"2026-03",
-	"2026-04",
-	"2026-05",
-	"2026-06",
-	"2026-07",
-	"2026-08",
-	"2026-09",
-	"2026-10",
-];
-
-function etiquetaMes(periodo: string): string {
-	const [year, month] = periodo.split("-").map(Number);
-	const date = new Date(year, month - 1, 1);
-	const label = new Intl.DateTimeFormat("es-BO", { month: "short" }).format(
-		date,
-	);
-	return label.charAt(0).toUpperCase() + label.slice(1).replace(".", "");
-}
-
-const data = MESES.map((periodo) => {
-	const cobrado = pagos
-		.filter((p) => p.fechaPago?.startsWith(periodo))
-		.reduce((acc, p) => acc + p.montoBase, 0);
-	return {
-		mes: etiquetaMes(periodo),
-		cobrado,
-		comisiones: Math.round(cobrado * 0.12),
-	};
-});
-
-export function IncomeChart() {
+export function IncomeChart({ data }: { data: PuntoIngresoAdmin[] }) {
 	return (
 		<ChartContainer config={config} className="aspect-auto h-[300px] w-full">
 			<AreaChart data={data} margin={{ left: 4, right: 12, top: 8, bottom: 0 }}>

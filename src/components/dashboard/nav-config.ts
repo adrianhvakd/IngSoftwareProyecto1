@@ -12,7 +12,7 @@ import {
 	Users,
 	Wallet,
 } from "lucide-react";
-import type { Rol } from "@/data/types";
+import type { Rol } from "@/types/models";
 
 export interface NavItem {
 	title: string;
@@ -103,38 +103,3 @@ export function navParaRol(rol: Rol): NavGroup[] {
 	if (rol === "Cliente") return NAV_CLIENTE;
 	return NAV_ADMIN;
 }
-
-export interface Sesion {
-	nombre: string;
-	email: string;
-	telefono: string;
-	avatarUrl: string;
-	rol: Rol;
-}
-
-export const SESIONES: Record<Rol, Sesion> = {
-	Administrador: {
-		nombre: "Rodrigo Álvarez Paredes",
-		email: "rodrigo.alvarez@remaxpotosi.bo",
-		telefono: "+591 71234567",
-		avatarUrl:
-			"https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=200&q=70",
-		rol: "Administrador",
-	},
-	Vendedor: {
-		nombre: "Carla Mendoza Vaca",
-		email: "carla.mendoza@remaxpotosi.bo",
-		telefono: "+591 72345678",
-		avatarUrl:
-			"https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=200&q=70",
-		rol: "Vendedor",
-	},
-	Cliente: {
-		nombre: "Luis Fernando Catari Choque",
-		email: "luis.catari@gmail.com",
-		telefono: "+591 67890123",
-		avatarUrl:
-			"https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=70",
-		rol: "Cliente",
-	},
-};

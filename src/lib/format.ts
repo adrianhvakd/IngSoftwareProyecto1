@@ -24,11 +24,27 @@ function formatDate(
 ): string {
 	const date = new Date(value);
 	if (Number.isNaN(date.getTime())) return value;
+	const opciones = { timeZone: "America/La_Paz", ...options };
 	try {
-		return new Intl.DateTimeFormat("es-BO", options).format(date);
+		return new Intl.DateTimeFormat("es-BO", opciones).format(date);
 	} catch {
-		return new Intl.DateTimeFormat("es-ES", options).format(date);
+		return new Intl.DateTimeFormat("es-ES", opciones).format(date);
 	}
+}
+
+/** Día calendario en La Paz (YYYY-MM-DD) para agrupar fechas sin desfase. */
+export function fechaDiaLaPaz(value: string): string {
+	const date = new Date(value);
+	if (Number.isNaN(date.getTime())) return value.slice(0, 10);
+	const partes = new Intl.DateTimeFormat("en-CA", {
+		timeZone: "America/La_Paz",
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+	}).formatToParts(date);
+	const valor = (tipo: string) =>
+		partes.find((parte) => parte.type === tipo)?.value ?? "";
+	return `${valor("year")}-${valor("month")}-${valor("day")}`;
 }
 
 /** Ej: 5 de octubre de 2026 */
@@ -88,26 +104,12 @@ export function formatHora(value: string): string {
 export function formatPeriodo(periodo: string): string {
 	const [year, month] = periodo.split("-").map(Number);
 	if (!year || !month) return periodo;
-	const date = new Date(year, month - 1, 1);
+	const date = new Date(Date.UTC(year, month - 1, 1, 12));
 	const label = formatDate(date.toISOString(), {
 		month: "long",
 		year: "numeric",
 	});
 	return label.charAt(0).toUpperCase() + label.slice(1);
-}
-
-/** Ej: hace 3 días / en 5 días / hoy */
-export function formatRelativo(value: string): string {
-	const target = new Date(value);
-	const now = new Date("2026-10-17T12:00:00");
-	const diffDays = Math.round(
-		(target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
-	);
-	if (diffDays === 0) return "hoy";
-	if (diffDays === 1) return "mañana";
-	if (diffDays === -1) return "ayer";
-	if (diffDays > 0) return `en ${diffDays} días`;
-	return `hace ${Math.abs(diffDays)} días`;
 }
 
 /** Iniciales para avatares de respaldo. */

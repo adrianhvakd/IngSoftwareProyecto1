@@ -1,6 +1,9 @@
 /**
  * Modelo de dominio de RE/MAX Potosí.
- * Datos ficticios de ejemplo. Fuente única para todas las pantallas del prototipo.
+ *
+ * Tipos de transporte que consumen las pantallas. Se mantienen separados de
+ * `database.types.ts` para que la interfaz no dependa de la forma cruda de las
+ * tablas y de las vistas de Supabase.
  */
 
 export type Rol = "Administrador" | "Vendedor" | "Cliente";
@@ -104,7 +107,11 @@ export interface Visita {
 	notas: string;
 }
 
-export type AlquilerEstado = "Vigente" | "Finalizado" | "Suspendido";
+export type AlquilerEstado =
+	| "Vigente"
+	| "Finalizado"
+	| "Suspendido"
+	| "Cancelado";
 
 export interface Alquiler {
 	id: string;
@@ -122,7 +129,12 @@ export interface Alquiler {
 	contratoEscaneado: boolean;
 }
 
-export type EstadoCuota = "Al día" | "Por vencer" | "En mora" | "Pagada";
+export type EstadoCuota =
+	| "Al día"
+	| "Por vencer"
+	| "En mora"
+	| "Pagada"
+	| "Anulada";
 
 export type MedioPago =
 	| "Tarjeta de crédito"
@@ -159,4 +171,20 @@ export interface FranjaHoraria {
 	id: string;
 	hora: string;
 	disponible: boolean;
+}
+
+/* ------------------------- Vistas unidas de la UI ------------------------ */
+
+export interface VisitaDetalle extends Visita {
+	cliente: Cliente;
+	inmueble: Inmueble;
+	vendedor: Vendedor | undefined;
+}
+
+export interface AlquilerDetalleUI extends Alquiler {
+	inmueble: Inmueble;
+	cliente: Cliente;
+	vendedor: Vendedor | undefined;
+	cuotaActual: Pago | undefined;
+	pagos: Pago[];
 }

@@ -1,7 +1,21 @@
-import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { rutaPanel } from "@/lib/auth";
 
 export const Route = createFileRoute("/admin")({
+	beforeLoad: ({ context }) => {
+		const sesion = context.sesion;
+
+		if (!sesion) throw redirect({ to: "/ingresar" });
+		if (sesion.debeCambiarPassword) {
+			throw redirect({ to: "/cambiar-password" });
+		}
+		if (sesion.rol !== "administrador") {
+			throw redirect({ to: rutaPanel(sesion.rol) });
+		}
+
+		return { sesion };
+	},
 	head: () => ({
 		meta: [
 			{ title: "Panel administrador · RE/MAX Potosí" },
@@ -12,8 +26,10 @@ export const Route = createFileRoute("/admin")({
 });
 
 function AdminLayout() {
+	const { sesion } = Route.useRouteContext();
+
 	return (
-		<DashboardShell rol="Administrador">
+		<DashboardShell sesion={sesion}>
 			<Outlet />
 		</DashboardShell>
 	);

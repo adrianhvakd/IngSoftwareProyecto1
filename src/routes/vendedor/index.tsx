@@ -26,53 +26,49 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import {
-	getAlquileresDetalle,
-	getComisionesVendedor,
-	getVisitasDetalle,
-} from "@/data";
-import { pagos } from "@/data/pagos";
-import { vendedorActual } from "@/data/vendedores";
-import {
 	formatBs,
 	formatFechaSemana,
 	formatHora,
 	formatPeriodo,
 } from "@/lib/format";
+import { listarPanelVendedor } from "@/server/paneles";
 
 export const Route = createFileRoute("/vendedor/")({
+	loader: () => listarPanelVendedor(),
 	head: () => ({
 		meta: [{ title: "Inicio · Panel vendedor · RE/MAX Potosí" }],
 	}),
 	component: VendedorInicio,
 });
 
-const HOY = new Date("2026-10-17T00:00:00").getTime();
-
 function VendedorInicio() {
-	const misVisitas = getVisitasDetalle().filter(
-		(v) => v.vendedorId === vendedorActual.id,
-	);
+	const { sesion } = Route.useRouteContext();
+	const {
+		ahora,
+		vendedor,
+		visitas: misVisitas,
+		alquileres: misAlquileres,
+		comisiones,
+		comisionFija,
+		cobrosMes,
+	} = Route.useLoaderData();
+	const nombre = vendedor?.nombre ?? sesion.nombres;
 	const proximas = misVisitas
 		.filter(
-			(v) => v.estado === "Pendiente" && new Date(v.fechaHora).getTime() >= HOY,
+			(v) =>
+				v.estado === "Pendiente" &&
+				new Date(v.fechaHora).getTime() >= new Date(ahora).getTime(),
 		)
 		.slice(0, 4);
-
-	const misAlquileres = getAlquileresDetalle().filter(
-		(a) => a.vendedorId === vendedorActual.id,
+	const comisionesAcumuladas = comisiones.reduce(
+		(acc, comision) => acc + comision.monto,
+		0,
 	);
-	const comisiones = getComisionesVendedor(vendedorActual.id);
-	const misRegistros = pagos.filter(
-		(p) =>
-			p.registradoPor === vendedorActual.nombre &&
-			p.fechaPago?.startsWith("2026-10"),
-	);
-	const cobradoMes = misRegistros.reduce((acc, p) => acc + p.monto, 0);
 
 	return (
 		<>
 			<PageHeader
-				title={`Hola, ${vendedorActual.nombre.split(" ")[0]}`}
+				title={`Hola, ${nombre.split(" ")[0]}`}
 				description="Tu resumen operativo: visitas asignadas, contratos cerrados y comisiones acumuladas."
 				actions={
 					<Button asChild variant="cta">
@@ -96,24 +92,24 @@ function VendedorInicio() {
 				/>
 				<StatCard
 					label="Alquileres cerrados"
-					valor={String(vendedorActual.alquileresCerrados)}
+					valor={String(vendedor?.alquileresCerrados ?? misAlquileres.length)}
 					icono={<TrendingUp className="size-4" aria-hidden="true" />}
 					tono="success"
-					hint="Histórico en la oficina"
+					hint="Contratos con tu gestión"
 				/>
 				<StatCard
 					label="Comisiones acumuladas"
-					valor={formatBs(comisiones)}
+					valor={formatBs(comisionesAcumuladas)}
 					icono={<HandCoins className="size-4" aria-hidden="true" />}
 					tono="primary"
-					hint={`Comisión fija ${formatBs(vendedorActual.comisionFija)} por cierre`}
+					hint={`Comisión fija ${formatBs(comisionFija)} por cierre`}
 				/>
 				<StatCard
-					label="Cobros registrados (oct.)"
-					valor={formatBs(cobradoMes)}
+					label="Cobros registrados (mes)"
+					valor={formatBs(cobrosMes.total)}
 					icono={<Wallet className="size-4" aria-hidden="true" />}
 					tono="primary"
-					hint={`${misRegistros.length} pagos este mes`}
+					hint={`${cobrosMes.cantidad} pagos este mes`}
 				/>
 			</section>
 
@@ -214,6 +210,13 @@ function VendedorInicio() {
 							</CardDescription>
 						</CardHeader>
 						<CardContent className="flex flex-col gap-2 px-4 pb-4">
+							{misAlquileres.length === 0 ? (
+								<EmptyState
+									icon={<FileSignature className="size-6" aria-hidden="true" />}
+									title="Sin contratos todavía"
+									description="Cuando cierres tu primer alquiler aparecerá aquí."
+								/>
+							) : null}
 							{misAlquileres.slice(0, 4).map((a) => (
 								<div
 									key={a.id}

@@ -1,16 +1,18 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 import {
 	Bell,
+	CalendarCheck,
 	CircleAlert,
+	FileSignature,
 	LogOut,
 	Search,
-	ShieldCheck,
 	TriangleAlert,
+	Wallet,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { StatusBadge } from "@/components/common/status-badge";
-import { navParaRol, SESIONES } from "@/components/dashboard/nav-config";
+import { navParaRol } from "@/components/dashboard/nav-config";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -37,9 +39,15 @@ import {
 } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { getResumenAdministrador } from "@/data";
-import type { Rol } from "@/data/types";
-import { formatBs, iniciales } from "@/lib/format";
+import { etiquetaRol, nombreCompleto, type SesionUsuario } from "@/lib/auth";
+import { iniciales } from "@/lib/format";
+import { cerrarSesion as cerrarSesionServidor } from "@/server/auth";
+import {
+	listarNotificaciones,
+	marcarNotificacionesLeidas,
+} from "@/server/paneles";
+import type { Rol } from "@/types/models";
+import type { NotificacionVista } from "@/types/paneles";
 
 interface Notificacion {
 	id: string;
@@ -48,48 +56,125 @@ interface Notificacion {
 	tono: "danger" | "warning" | "info";
 	icono: typeof Bell;
 	to: string;
+	leida: boolean;
 }
 
-export function DashboardTopbar({ rol }: { rol: Rol }) {
+function aNotificacion(
+	fila: NotificacionVista,
+	rol: SesionUsuario["rol"],
+): Notificacion {
+	const esMora = fila.tipo === "cuota_en_mora";
+	const esAviso = fila.tipo === "cuota_por_vencer";
+	const esVisita =
+		fila.tipo === "visita_agendada" || fila.tipo === "visita_asignada";
+	const esPago = fila.tipo === "pago_registrado";
+	const esCierre = fila.tipo === "alquiler_cerrado";
+
+	const to = (() => {
+		if (esVisita) {
+			if (rol === "administrador") return "/admin/visitas";
+			if (rol === "vendedor") return "/vendedor/visitas";
+			return "/cliente";
+		}
+		if (esMora || esAviso || esPago) {
+			if (rol === "administrador") return "/admin/alquileres";
+			if (rol === "vendedor") return "/vendedor/registrar-pago";
+			return "/cliente/mi-alquiler";
+		}
+		if (esCierre) {
+			if (rol === "administrador") return "/admin/alquileres";
+			if (rol === "vendedor") return "/vendedor/comisiones";
+			return "/cliente/mi-alquiler";
+		}
+		if (rol === "vendedor") return "/vendedor";
+		return rol === "cliente" ? "/cliente" : "/admin";
+	})();
+
+	return {
+		id: fila.id,
+		titulo: fila.titulo,
+		detalle: fila.mensaje,
+		tono: esMora ? "danger" : esAviso ? "warning" : "info",
+		icono: esMora
+			? CircleAlert
+			: esAviso
+				? TriangleAlert
+				: esVisita
+					? CalendarCheck
+					: esPago
+						? Wallet
+						: esCierre
+							? FileSignature
+							: Bell,
+		to,
+		leida: fila.leida,
+	};
+}
+
+export function DashboardTopbar({
+	rol,
+	sesion,
+}: {
+	rol: Rol;
+	sesion: SesionUsuario;
+}) {
 	const navigate = useNavigate();
-	const sesion = SESIONES[rol];
+	const router = useRouter();
 	const grupos = navParaRol(rol);
 	const [paletteOpen, setPaletteOpen] = useState(false);
-	const [noLeidas, setNoLeidas] = useState(true);
+	const [notificaciones, setNotificaciones] = useState<Notificacion[]>([]);
+	const [cargandoNotif, setCargandoNotif] = useState(true);
+	const [marcando, setMarcando] = useState(false);
+	const [saliendo, setSaliendo] = useState(false);
+	const nombre = nombreCompleto(sesion);
+	const noLeidas = notificaciones.filter((n) => !n.leida).length;
 
-	const resumen = getResumenAdministrador();
-	const notificaciones: Notificacion[] = [
-		{
-			id: "n1",
-			titulo: `${resumen.cuotasEnMora} cuotas en mora`,
-			detalle: `Monto acumulado: ${formatBs(resumen.moraTotal)}`,
-			tono: "danger",
-			icono: CircleAlert,
-			to:
-				rol === "Administrador"
-					? "/admin/alquileres"
-					: "/vendedor/registrar-pago",
-		},
-		{
-			id: "n2",
-			titulo: `${resumen.cuotasPorVencer} cuotas por vencer`,
-			detalle: "Recordatorios enviados a los inquilinos",
-			tono: "warning",
-			icono: TriangleAlert,
-			to:
-				rol === "Administrador"
-					? "/admin/alquileres"
-					: "/vendedor/registrar-pago",
-		},
-		{
-			id: "n3",
-			titulo: "Visitas pendientes esta semana",
-			detalle: `${resumen.visitasSemana} visitas agendadas`,
-			tono: "info",
-			icono: Bell,
-			to: rol === "Administrador" ? "/admin/visitas" : "/vendedor/visitas",
-		},
-	];
+	useEffect(() => {
+		let activo = true;
+		setCargandoNotif(true);
+		listarNotificaciones()
+			.then((filas) => {
+				if (!activo) return;
+				setNotificaciones(filas.map((fila) => aNotificacion(fila, sesion.rol)));
+			})
+			.catch((error) => {
+				if (!activo) return;
+				console.warn(
+					"[topbar] No se pudieron cargar las notificaciones:",
+					error instanceof Error ? error.message : error,
+				);
+			})
+			.finally(() => {
+				if (activo) setCargandoNotif(false);
+			});
+		return () => {
+			activo = false;
+		};
+	}, [sesion.rol]);
+
+	async function marcarLeidas() {
+		if (noLeidas === 0 || marcando) return;
+		const anteriores = notificaciones;
+		setMarcando(true);
+		setNotificaciones((prev) => prev.map((n) => ({ ...n, leida: true })));
+		try {
+			const resultado = await marcarNotificacionesLeidas();
+			if (!resultado.ok) {
+				setNotificaciones(anteriores);
+				toast.error("No se pudieron marcar las notificaciones", {
+					description: resultado.error,
+				});
+			}
+		} catch (error) {
+			setNotificaciones(anteriores);
+			toast.error("No se pudieron marcar las notificaciones", {
+				description:
+					error instanceof Error ? error.message : "Inténtalo de nuevo.",
+			});
+		} finally {
+			setMarcando(false);
+		}
+	}
 
 	useEffect(() => {
 		function onKeyDown(event: KeyboardEvent) {
@@ -102,11 +187,26 @@ export function DashboardTopbar({ rol }: { rol: Rol }) {
 		return () => window.removeEventListener("keydown", onKeyDown);
 	}, []);
 
-	function cerrarSesion() {
-		toast.info("Sesión cerrada", {
-			description: "Volviendo al portal público. (Acción simulada)",
-		});
-		void navigate({ to: "/" });
+	async function cerrarSesion() {
+		setSaliendo(true);
+		try {
+			const resultado = await cerrarSesionServidor();
+
+			if (!resultado.ok) {
+				toast.error("No se pudo cerrar la sesión", {
+					description: resultado.error,
+				});
+				return;
+			}
+
+			toast.success("Sesión cerrada", {
+				description: "Volviendo al portal público.",
+			});
+			await router.invalidate();
+			await navigate({ to: "/" });
+		} finally {
+			setSaliendo(false);
+		}
 	}
 
 	return (
@@ -146,10 +246,10 @@ export function DashboardTopbar({ rol }: { rol: Rol }) {
 							size="icon"
 							className="relative"
 							aria-label="Notificaciones"
-							onClick={() => setNoLeidas(false)}
+							onClick={() => void marcarLeidas()}
 						>
 							<Bell aria-hidden="true" />
-							{noLeidas ? (
+							{noLeidas > 0 ? (
 								<span className="absolute top-2 right-2 size-2 rounded-full bg-cta ring-2 ring-background" />
 							) : null}
 						</Button>
@@ -159,51 +259,60 @@ export function DashboardTopbar({ rol }: { rol: Rol }) {
 							<p className="font-display text-sm font-bold text-foreground">
 								Notificaciones
 							</p>
-							<StatusBadge tone="warning">3 nuevas</StatusBadge>
+							<StatusBadge tone={noLeidas > 0 ? "warning" : "muted"}>
+								{noLeidas > 0 ? `${noLeidas} nuevas` : "Al día"}
+							</StatusBadge>
 						</div>
 						<ul className="max-h-80 divide-y divide-border overflow-y-auto">
-							{notificaciones.map((n) => {
-								const Icono = n.icono;
-								return (
-									<li key={n.id}>
-										<Link
-											to={n.to}
-											className="flex gap-3 px-4 py-3 transition-colors hover:bg-accent"
-										>
-											<span
-												className={
-													n.tono === "danger"
-														? "mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-red-50 text-destructive"
-														: n.tono === "warning"
-															? "mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-warning-soft text-warning"
-															: "mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-blue-soft text-primary"
-												}
+							{cargandoNotif ? (
+								<li className="px-4 py-6 text-center text-sm text-muted-foreground">
+									Cargando notificaciones…
+								</li>
+							) : notificaciones.length === 0 ? (
+								<li className="px-4 py-6 text-center text-sm text-muted-foreground">
+									No tienes notificaciones por ahora.
+								</li>
+							) : (
+								notificaciones.map((n) => {
+									const Icono = n.icono;
+									return (
+										<li key={n.id}>
+											<Link
+												to={n.to}
+												className="flex gap-3 px-4 py-3 transition-colors hover:bg-accent"
 											>
-												<Icono className="size-4" aria-hidden="true" />
-											</span>
-											<span>
-												<span className="block text-sm font-medium text-foreground">
-													{n.titulo}
+												<span
+													className={
+														n.tono === "danger"
+															? "mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-red-50 text-destructive"
+															: n.tono === "warning"
+																? "mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-warning-soft text-warning"
+																: "mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-blue-soft text-primary"
+													}
+												>
+													<Icono className="size-4" aria-hidden="true" />
 												</span>
-												<span className="block text-xs text-muted-foreground">
-													{n.detalle}
+												<span className="min-w-0">
+													<span className="block text-sm font-medium text-foreground">
+														{n.titulo}
+													</span>
+													<span className="block text-xs text-muted-foreground">
+														{n.detalle}
+													</span>
 												</span>
-											</span>
-										</Link>
-									</li>
-								);
-							})}
+											</Link>
+										</li>
+									);
+								})
+							)}
 						</ul>
 						<div className="border-t border-border p-2">
 							<Button
 								variant="ghost"
 								size="sm"
 								className="w-full"
-								onClick={() =>
-									toast.info("Marcar todas como leídas", {
-										description: "Acción simulada.",
-									})
-								}
+								disabled={noLeidas === 0 || marcando || cargandoNotif}
+								onClick={() => void marcarLeidas()}
 							>
 								Marcar todas como leídas
 							</Button>
@@ -219,54 +328,36 @@ export function DashboardTopbar({ rol }: { rol: Rol }) {
 							aria-label="Menú de usuario"
 						>
 							<Avatar className="size-8">
-								<AvatarImage src={sesion.avatarUrl} alt={sesion.nombre} />
+								<AvatarImage src={sesion.avatarUrl ?? undefined} alt={nombre} />
 								<AvatarFallback className="bg-blue-soft text-primary">
-									{iniciales(sesion.nombre)}
+									{iniciales(nombre)}
 								</AvatarFallback>
 							</Avatar>
 							<span className="hidden text-left leading-tight md:grid">
 								<span className="text-sm font-semibold text-foreground">
-									{sesion.nombre.split(" ").slice(0, 2).join(" ")}
+									{nombre.split(" ").slice(0, 2).join(" ")}
 								</span>
 								<span className="text-xs text-muted-foreground">
-									{sesion.rol}
+									{etiquetaRol(sesion.rol)}
 								</span>
 							</span>
 						</button>
 					</DropdownMenuTrigger>
 					<DropdownMenuContent align="end" className="w-56">
 						<DropdownMenuLabel>
-							<span className="block text-sm font-semibold">
-								{sesion.nombre}
-							</span>
+							<span className="block text-sm font-semibold">{nombre}</span>
 							<span className="block text-xs font-normal text-muted-foreground">
-								{sesion.email}
+								{sesion.correo}
 							</span>
 						</DropdownMenuLabel>
-						<DropdownMenuSeparator />
-						<DropdownMenuLabel className="flex items-center gap-2 text-xs text-muted-foreground">
-							<ShieldCheck
-								className="size-3.5 text-primary"
-								aria-hidden="true"
-							/>
-							Cambiar de panel
-						</DropdownMenuLabel>
-						<DropdownMenuItem asChild>
-							<Link to="/admin">Administrador</Link>
-						</DropdownMenuItem>
-						<DropdownMenuItem asChild>
-							<Link to="/vendedor">Vendedor</Link>
-						</DropdownMenuItem>
-						<DropdownMenuItem asChild>
-							<Link to="/cliente">Cliente</Link>
-						</DropdownMenuItem>
 						<DropdownMenuSeparator />
 						<DropdownMenuItem
 							onSelect={cerrarSesion}
+							disabled={saliendo}
 							className="text-destructive focus:text-destructive"
 						>
 							<LogOut aria-hidden="true" />
-							Cerrar sesión
+							{saliendo ? "Cerrando sesión…" : "Cerrar sesión"}
 						</DropdownMenuItem>
 					</DropdownMenuContent>
 				</DropdownMenu>

@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import {
 	BadgeDollarSign,
 	CalendarClock,
@@ -20,6 +20,16 @@ import {
 } from "@/components/common/status-badge";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -38,33 +48,30 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { AlquilerDetalle } from "@/data";
-import {
-	getAlquileresDetalle,
-	getPagosDeAlquiler,
-	getResumenAdministrador,
-} from "@/data";
 import {
 	formatBs,
 	formatBsMes,
 	formatFecha,
 	formatPeriodo,
 } from "@/lib/format";
+import { listarAlquileresAdmin } from "@/server/alquileres/consultas";
+import { registrarPagoCuota } from "@/server/alquileres/registrar";
+import type { AlquilerDetalleVista } from "@/types/alquileres";
 
 export const Route = createFileRoute("/admin/alquileres/")({
+	loader: () => listarAlquileresAdmin(),
 	head: () => ({
 		meta: [{ title: "Alquileres y cobros · Administración · RE/MAX Potosí" }],
 	}),
 	component: AdminAlquileres,
 });
 
-type Filtro = "todos" | "Vigente" | "Finalizado" | "mora";
+type Filtro = "todos" | "Vigente" | "Finalizado" | "Cancelado" | "mora";
 
 function AdminAlquileres() {
-	const resumen = getResumenAdministrador();
-	const alquileres = useMemo(() => getAlquileresDetalle(), []);
+	const { alquileres, resumen } = Route.useLoaderData();
 	const [filtro, setFiltro] = useState<Filtro>("todos");
-	const [detalle, setDetalle] = useState<AlquilerDetalle | null>(null);
+	const [detalle, setDetalle] = useState<AlquilerDetalleVista | null>(null);
 
 	const visibles = useMemo(() => {
 		if (filtro === "todos") return alquileres;
@@ -98,14 +105,13 @@ function AdminAlquileres() {
 					valor={String(resumen.alquileresVigentes)}
 					icono={<FileText className="size-4" aria-hidden="true" />}
 					tono="primary"
-					hint={`${alquileres.length} contratos en total`}
+					hint={`${resumen.totalContratos} contratos en total`}
 				/>
 				<StatCard
-					label="Cobrado en octubre"
+					label="Cobrado este mes"
 					valor={formatBs(resumen.cobrosDelMes)}
 					icono={<Wallet className="size-4" aria-hidden="true" />}
 					tono="success"
-					tendencia={{ valor: "5%", direccion: "up" }}
 				/>
 				<StatCard
 					label="Cuotas en mora"
@@ -129,6 +135,7 @@ function AdminAlquileres() {
 					<TabsTrigger value="Vigente">Vigentes</TabsTrigger>
 					<TabsTrigger value="mora">En mora</TabsTrigger>
 					<TabsTrigger value="Finalizado">Finalizados</TabsTrigger>
+					<TabsTrigger value="Cancelado">Cancelados</TabsTrigger>
 				</TabsList>
 			</Tabs>
 
@@ -217,15 +224,75 @@ function AdminAlquileres() {
 				onOpenChange={(open) => !open && setDetalle(null)}
 			>
 				<SheetContent className="w-full overflow-y-auto sm:max-w-xl">
-					{detalle ? <DetalleAlquiler alquiler={detalle} /> : null}
+					{detalle ? (
+						<DetalleAlquiler
+							alquiler={detalle}
+							onPagado={() => setDetalle(null)}
+						/>
+					) : null}
 				</SheetContent>
 			</Sheet>
 		</>
 	);
 }
 
-function DetalleAlquiler({ alquiler }: { alquiler: AlquilerDetalle }) {
-	const pagos = getPagosDeAlquiler(alquiler.id);
+function DetalleAlquiler({
+	alquiler,
+	onPagado,
+}: {
+	alquiler: AlquilerDetalleVista;
+	onPagado: () => void;
+}) {
+	const router = useRouter();
+	const [pagoAbierto, setPagoAbierto] = useState(false);
+	const [registrando, setRegistrando] = useState(false);
+	const cuota = alquiler.cuotaActual;
+
+	async function confirmarPago() {
+		if (!cuota) {
+			toast.error("Este contrato no tiene cuotas pendientes.");
+			return;
+		}
+
+		setRegistrando(true);
+		try {
+			await registrarPagoCuota({
+				data: {
+					alquilerId: alquiler.id,
+					cuotaId: cuota.id,
+					monto: cuota.monto,
+					medio: "efectivo",
+					comprobantePath: null,
+				},
+			});
+			toast.success("Pago registrado", {
+				description: `${formatBs(cuota.monto)} · cuota ${cuota.numeroCuota}.`,
+			});
+			setPagoAbierto(false);
+			onPagado();
+			await router.invalidate();
+		} catch (error) {
+			toast.error("No se pudo registrar el pago", {
+				description:
+					error instanceof Error
+						? error.message
+						: "Inténtalo de nuevo en unos segundos.",
+			});
+		} finally {
+			setRegistrando(false);
+		}
+	}
+
+	function abrirContrato() {
+		if (!alquiler.contratoUrl) {
+			toast.info("Contrato no disponible", {
+				description:
+					"Este contrato aún no tiene el PDF firmado en el almacenamiento.",
+			});
+			return;
+		}
+		window.open(alquiler.contratoUrl, "_blank", "noopener,noreferrer");
+	}
 
 	return (
 		<>
@@ -301,11 +368,14 @@ function DetalleAlquiler({ alquiler }: { alquiler: AlquilerDetalle }) {
 									<TableHead>Vence</TableHead>
 									<TableHead className="hidden sm:table-cell">Pago</TableHead>
 									<TableHead>Monto</TableHead>
+									<TableHead className="hidden md:table-cell">
+										Comprobante
+									</TableHead>
 									<TableHead className="pr-4 text-right">Estado</TableHead>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
-								{pagos.map((p) => (
+								{alquiler.pagos.map((p) => (
 									<TableRow key={p.id}>
 										<TableCell className="pl-4 tabular text-muted-foreground">
 											{p.numeroCuota}
@@ -333,6 +403,22 @@ function DetalleAlquiler({ alquiler }: { alquiler: AlquilerDetalle }) {
 												</span>
 											) : null}
 										</TableCell>
+										<TableCell className="hidden md:table-cell">
+											{p.comprobante ? (
+												<Button asChild variant="ghost" size="icon-sm">
+													<a
+														href={p.comprobante}
+														target="_blank"
+														rel="noreferrer"
+														aria-label={`Ver comprobante de la cuota ${p.numeroCuota}`}
+													>
+														<Download aria-hidden="true" />
+													</a>
+												</Button>
+											) : (
+												<span className="text-xs text-muted-foreground">—</span>
+											)}
+										</TableCell>
 										<TableCell className="pr-4 text-right">
 											<StatusBadge tone={cuotaTone[p.estado]}>
 												{p.estado}
@@ -351,30 +437,47 @@ function DetalleAlquiler({ alquiler }: { alquiler: AlquilerDetalle }) {
 					<Button
 						variant="cta"
 						className="flex-1"
-						onClick={() =>
-							toast.success("Cobro registrado", {
-								description:
-									"Se registró el pago de la cuota actual. (Acción simulada)",
-							})
-						}
+						onClick={() => setPagoAbierto(true)}
+						disabled={!cuota}
 					>
 						<Plus aria-hidden="true" />
 						Registrar pago
 					</Button>
-					<Button
-						variant="outline"
-						className="flex-1"
-						onClick={() =>
-							toast.info("Descargando contrato", {
-								description: `${alquiler.codigo}.pdf (Acción simulada)`,
-							})
-						}
-					>
+					<Button variant="outline" className="flex-1" onClick={abrirContrato}>
 						<Download aria-hidden="true" />
 						Descargar contrato
 					</Button>
 				</div>
 			</div>
+
+			<AlertDialog open={pagoAbierto} onOpenChange={setPagoAbierto}>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle className="font-display">
+							Registrar pago de la cuota actual
+						</AlertDialogTitle>
+						<AlertDialogDescription>
+							Se registrará el pago de {formatBs(cuota?.monto ?? 0)} de la cuota
+							#{cuota?.numeroCuota ?? "—"} en efectivo. Esta acción marcará la
+							cuota como pagada.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel disabled={registrando}>
+							Cancelar
+						</AlertDialogCancel>
+						<AlertDialogAction
+							onClick={(event) => {
+								event.preventDefault();
+								void confirmarPago();
+							}}
+							disabled={registrando}
+						>
+							{registrando ? "Registrando…" : "Confirmar pago"}
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</>
 	);
 }

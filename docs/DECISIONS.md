@@ -1,6 +1,6 @@
 # Decisiones técnicas — RE/MAX Potosí
 
-Última actualización: 2026-10-23. Registro breve de decisiones vigentes y su
+Última actualización: 2026-10-28. Registro breve de decisiones vigentes y su
 motivo. Cambiar una decisión implica migración y actualización de docs.
 
 ## D1. `supabase-js` en lugar de Prisma
@@ -133,12 +133,36 @@ incluye el aviso de regeneración.
 **Consecuencia:** puede desincronizarse; ejecutar `pnpm db:types` al enlazar y
 revisar el diff.
 
-## D14. Frontend todavía con mocks
+## D14. Frontend sin mocks
 
-**Decisión:** no conectar pantallas ni borrar `src/data/` en esta etapa.
+**Decisión:** todas las pantallas consumen Supabase y `src/data/` se eliminó.
 
-**Motivo:** entregables 3–7 son base de datos/documentación; conectar sin auth
-real ni guards produciría una falsa sensación de seguridad.
+**Motivo:** los mocks ocultaban fallos de RLS y mostraban acciones que no
+persistían. Los tipos de transporte viven en `src/types/models.ts` y los DTO en
+`src/types/*.ts`.
 
-**Consecuencia:** el plan de migración es incremental y cada pantalla se conecta
-cuando su fase está lista.
+**Consecuencia:** si Supabase falla, la ruta muestra el error boundary o un
+estado vacío real; no hay respaldo silencioso con datos falsos.
+
+## D15. Landing pública con agregados
+
+**Decisión:** agentes y métricas salen de `listar_agentes_publicos()` y
+`resumen_publico()` (`security definer`), no de `perfiles` ni `alquileres`
+abiertos a `anon`.
+
+**Motivo:** evitar exponer correos, CI, comisiones o filas completas. Los
+testimonios ficticios se retiraron.
+
+**Consecuencia:** una migración nueva debe mantener el grant explícito a `anon`
+y devolver solo campos profesionales agregados.
+
+## D16. Estado de visitas protegido por trigger
+
+**Decisión:** `proteger_campos_visita` (0009) limita el UPDATE de visitas a la
+transición que corresponde al cliente o vendedor.
+
+**Motivo:** la política RLS anterior permitía la fila completa y confiaba en la
+UI para no cambiar inmueble, fecha o vendedor.
+
+**Consecuencia:** cualquier flujo nuevo (reprogramar, asignar) debe ir por una
+RPC o por el rol administrador; no ampliar el trigger sin revisar RLS.

@@ -1,9 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import {
 	MoreHorizontal,
 	Search,
 	ShieldCheck,
 	UserCog,
+	UserPlus,
 	Users,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -47,11 +48,17 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import type { Rol } from "@/data/types";
-import { usuarios as usuariosIniciales } from "@/data/usuarios";
+import { ROL_UI_A_DB } from "@/lib/admin";
 import { formatFecha, iniciales } from "@/lib/format";
+import {
+	cambiarEstadoUsuario,
+	cambiarRolUsuario,
+	listarUsuariosAdmin,
+} from "@/server/admin/usuarios";
+import type { Rol } from "@/types/models";
 
 export const Route = createFileRoute("/admin/usuarios")({
+	loader: () => listarUsuariosAdmin(),
 	head: () => ({
 		meta: [{ title: "Usuarios · Administración · RE/MAX Potosí" }],
 	}),
@@ -70,7 +77,11 @@ interface CambioPendiente {
 }
 
 function AdminUsuarios() {
+	const usuariosIniciales = Route.useLoaderData();
+	const { sesion } = Route.useRouteContext();
+	const router = useRouter();
 	const [lista, setLista] = useState(usuariosIniciales);
+	const [guardando, setGuardando] = useState(false);
 	const [q, setQ] = useState("");
 	const [rol, setRol] = useState<FiltroRol>("todos");
 	const [estado, setEstado] = useState<FiltroEstado>("todos");
@@ -89,31 +100,80 @@ function AdminUsuarios() {
 		});
 	}, [lista, q, rol, estado]);
 
-	function confirmarCambio() {
-		if (!pendiente) return;
-		setLista((prev) =>
-			prev.map((u) =>
-				u.id === pendiente.userId ? { ...u, rol: pendiente.nuevoRol } : u,
-			),
-		);
-		toast.success("Rol actualizado", {
-			description: `${pendiente.nombre} ahora es ${pendiente.nuevoRol}. (Acción simulada)`,
-		});
-		setPendiente(null);
+	async function confirmarCambio() {
+		if (!pendiente || guardando) return;
+		setGuardando(true);
+		try {
+			const resultado = await cambiarRolUsuario({
+				data: {
+					usuarioId: pendiente.userId,
+					rol: ROL_UI_A_DB[pendiente.nuevoRol],
+				},
+			});
+
+			if (!resultado.ok) {
+				toast.error("No se pudo cambiar el rol", {
+					description: resultado.error,
+				});
+				return;
+			}
+
+			setLista((prev) =>
+				prev.map((u) =>
+					u.id === pendiente.userId ? { ...u, rol: pendiente.nuevoRol } : u,
+				),
+			);
+			toast.success("Rol actualizado", {
+				description: `${pendiente.nombre} ahora es ${pendiente.nuevoRol}.`,
+			});
+			setPendiente(null);
+			await router.invalidate();
+		} catch (error) {
+			toast.error("No se pudo cambiar el rol", {
+				description:
+					error instanceof Error ? error.message : "Inténtalo de nuevo.",
+			});
+		} finally {
+			setGuardando(false);
+		}
 	}
 
-	function alternarEstado(
+	async function alternarEstado(
 		userId: string,
 		nombre: string,
 		actual: "Activo" | "Inactivo",
 	) {
+		if (guardando) return;
 		const nuevo = actual === "Activo" ? "Inactivo" : "Activo";
-		setLista((prev) =>
-			prev.map((u) => (u.id === userId ? { ...u, estado: nuevo } : u)),
-		);
-		toast.info(`Cuenta ${nuevo === "Activo" ? "activada" : "desactivada"}`, {
-			description: `${nombre} · estado ${nuevo}. (Acción simulada)`,
-		});
+		const activo = nuevo === "Activo";
+		setGuardando(true);
+		try {
+			const resultado = await cambiarEstadoUsuario({
+				data: { usuarioId: userId, activo },
+			});
+
+			if (!resultado.ok) {
+				toast.error("No se pudo actualizar la cuenta", {
+					description: resultado.error,
+				});
+				return;
+			}
+
+			setLista((prev) =>
+				prev.map((u) => (u.id === userId ? { ...u, estado: nuevo } : u)),
+			);
+			toast.info(`Cuenta ${activo ? "activada" : "desactivada"}`, {
+				description: `${nombre} · estado ${nuevo}.`,
+			});
+			await router.invalidate();
+		} catch (error) {
+			toast.error("No se pudo actualizar la cuenta", {
+				description:
+					error instanceof Error ? error.message : "Inténtalo de nuevo.",
+			});
+		} finally {
+			setGuardando(false);
+		}
 	}
 
 	return (
@@ -122,17 +182,11 @@ function AdminUsuarios() {
 				title="Usuarios"
 				description="Cuentas de la plataforma. Administra roles y estado de acceso de cada usuario."
 				actions={
-					<Button
-						variant="outline"
-						onClick={() =>
-							toast.info("Invitar usuario", {
-								description:
-									"Se abriría el formulario de alta de cuenta. (Acción simulada)",
-							})
-						}
-					>
-						<Users aria-hidden="true" />
-						Invitar usuario
+					<Button asChild variant="outline">
+						<Link to="/admin/vendedores">
+							<UserPlus aria-hidden="true" />
+							Crear vendedor
+						</Link>
 					</Button>
 				}
 			/>
@@ -282,6 +336,7 @@ function AdminUsuarios() {
 												{ROLES.filter((r) => r !== u.rol).map((r) => (
 													<DropdownMenuItem
 														key={r}
+														disabled={u.id === sesion?.id || guardando}
 														onSelect={() =>
 															setPendiente({
 																userId: u.id,
@@ -296,6 +351,7 @@ function AdminUsuarios() {
 												))}
 												<DropdownMenuSeparator />
 												<DropdownMenuItem
+													disabled={u.id === sesion?.id || guardando}
 													onSelect={() =>
 														alternarEstado(u.id, u.nombre, u.estado)
 													}

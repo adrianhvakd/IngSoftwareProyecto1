@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { BadgeDollarSign, HandCoins, TrendingUp, Wallet } from "lucide-react";
 import { useMemo, useState } from "react";
 import { EmptyState } from "@/components/common/empty-state";
-import { alquilerTone, StatusBadge } from "@/components/common/status-badge";
+import { comisionTone, StatusBadge } from "@/components/common/status-badge";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import {
@@ -20,11 +20,11 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import { getAlquileresDetalle, getComisionesVendedor } from "@/data";
-import { vendedorActual } from "@/data/vendedores";
 import { formatBs, formatFecha, formatPeriodo } from "@/lib/format";
+import { listarComisionesVendedor } from "@/server/alquileres/consultas";
 
 export const Route = createFileRoute("/vendedor/comisiones")({
+	loader: () => listarComisionesVendedor(),
 	head: () => ({
 		meta: [{ title: "Comisiones · Panel vendedor · RE/MAX Potosí" }],
 	}),
@@ -32,36 +32,29 @@ export const Route = createFileRoute("/vendedor/comisiones")({
 });
 
 function VendedorComisiones() {
-	const [anio, setAnio] = useState("2026");
-
-	const misAlquileres = useMemo(
-		() =>
-			getAlquileresDetalle()
-				.filter((a) => a.vendedorId === vendedorActual.id)
-				.sort((a, b) => b.fechaInicio.localeCompare(a.fechaInicio)),
-		[],
-	);
+	const { comisiones, comisionFija } = Route.useLoaderData();
+	const [anio, setAnio] = useState(() => String(new Date().getFullYear()));
 
 	const anios = useMemo(() => {
-		const set = new Set(misAlquileres.map((a) => a.fechaInicio.slice(0, 4)));
-		set.add("2026");
+		const set = new Set(comisiones.map((c) => c.fecha.slice(0, 4)));
+		set.add(String(new Date().getFullYear()));
 		return [...set].sort((a, b) => b.localeCompare(a));
-	}, [misAlquileres]);
+	}, [comisiones]);
 
-	const filtrados = misAlquileres.filter((a) => a.fechaInicio.startsWith(anio));
-	const totalHistorico = getComisionesVendedor(vendedorActual.id);
-	const totalAnio = filtrados.reduce((acc, a) => acc + a.comisionFija, 0);
+	const filtradas = comisiones.filter((c) => c.fecha.startsWith(anio));
+	const totalHistorico = comisiones.reduce((acc, c) => acc + c.monto, 0);
+	const totalAnio = filtradas.reduce((acc, c) => acc + c.monto, 0);
 	const promedio =
-		filtrados.length > 0 ? Math.round(totalAnio / filtrados.length) : 0;
+		filtradas.length > 0 ? Math.round(totalAnio / filtradas.length) : 0;
 
 	const porPeriodo = useMemo(() => {
 		const mapa = new Map<string, number>();
-		for (const a of filtrados) {
-			const clave = a.fechaInicio.slice(0, 7);
-			mapa.set(clave, (mapa.get(clave) ?? 0) + a.comisionFija);
+		for (const c of filtradas) {
+			const clave = c.fecha.slice(0, 7);
+			mapa.set(clave, (mapa.get(clave) ?? 0) + c.monto);
 		}
 		return [...mapa.entries()].sort((a, b) => b[0].localeCompare(a[0]));
-	}, [filtrados]);
+	}, [filtradas]);
 
 	const maximo = Math.max(1, ...porPeriodo.map(([, valor]) => valor));
 
@@ -92,14 +85,14 @@ function VendedorComisiones() {
 					valor={formatBs(totalHistorico)}
 					icono={<HandCoins className="size-4" aria-hidden="true" />}
 					tono="primary"
-					hint={`${misAlquileres.length} contratos con tu gestión`}
+					hint={`${comisiones.length} contratos con tu gestión`}
 				/>
 				<StatCard
 					label={`Comisión ${anio}`}
 					valor={formatBs(totalAnio)}
 					icono={<Wallet className="size-4" aria-hidden="true" />}
 					tono="success"
-					hint={`${filtrados.length} contratos cerrados`}
+					hint={`${filtradas.length} contratos cerrados`}
 				/>
 				<StatCard
 					label="Comisión promedio"
@@ -110,14 +103,14 @@ function VendedorComisiones() {
 				/>
 				<StatCard
 					label="Comisión fija actual"
-					valor={formatBs(vendedorActual.comisionFija)}
+					valor={formatBs(comisionFija)}
 					icono={<BadgeDollarSign className="size-4" aria-hidden="true" />}
 					tono="cta"
 					hint="Por cada alquiler cerrado"
 				/>
 			</section>
 
-			{filtrados.length === 0 ? (
+			{filtradas.length === 0 ? (
 				<EmptyState
 					icon={<HandCoins className="size-6" aria-hidden="true" />}
 					title={`Sin comisiones en ${anio}`}
@@ -133,35 +126,35 @@ function VendedorComisiones() {
 									<TableHead className="hidden md:table-cell">
 										Cliente
 									</TableHead>
-									<TableHead className="hidden lg:table-cell">Inicio</TableHead>
+									<TableHead className="hidden lg:table-cell">Fecha</TableHead>
 									<TableHead>Estado</TableHead>
 									<TableHead className="pr-5 text-right">Comisión</TableHead>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
-								{filtrados.map((a) => (
-									<TableRow key={a.id}>
+								{filtradas.map((c) => (
+									<TableRow key={c.id}>
 										<TableCell className="pl-5">
 											<span className="block font-medium text-foreground">
-												{a.codigo}
+												{c.codigo}
 											</span>
 											<span className="block max-w-[200px] truncate text-xs text-muted-foreground">
-												{a.inmueble.titulo}
+												{c.inmuebleTitulo}
 											</span>
 										</TableCell>
 										<TableCell className="hidden text-muted-foreground md:table-cell">
-											{a.cliente.nombre}
+											{c.clienteNombre}
 										</TableCell>
 										<TableCell className="hidden whitespace-nowrap text-muted-foreground lg:table-cell">
-											{formatFecha(a.fechaInicio)}
+											{formatFecha(c.fecha)}
 										</TableCell>
 										<TableCell>
-											<StatusBadge tone={alquilerTone[a.estado]}>
-												{a.estado}
+											<StatusBadge tone={comisionTone[c.estado]}>
+												{c.estado}
 											</StatusBadge>
 										</TableCell>
 										<TableCell className="pr-5 text-right font-display font-bold tabular text-foreground">
-											{formatBs(a.comisionFija)}
+											{formatBs(c.monto)}
 										</TableCell>
 									</TableRow>
 								))}

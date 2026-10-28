@@ -4,13 +4,14 @@ import { CardContainer } from "@/components/aceternity/three-d-card";
 import { SectionHeading } from "@/components/common/section-heading";
 import { PropertyCard } from "@/components/property/property-card";
 import { Button } from "@/components/ui/button";
-import { inmuebles } from "@/data/inmuebles";
+import type { Inmueble } from "@/types/models";
 
-export function FeaturedProperties() {
-	const destacados = [
-		...inmuebles.filter((i) => i.destacado),
-		...inmuebles.filter((i) => !i.destacado),
-	].slice(0, 3);
+interface FeaturedPropertiesProps {
+	inmuebles: Inmueble[];
+}
+
+export function FeaturedProperties({ inmuebles }: FeaturedPropertiesProps) {
+	const destacados = inmuebles.slice(0, 3);
 
 	return (
 		<section className="container-page py-16 lg:py-24">

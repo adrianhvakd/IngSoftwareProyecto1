@@ -1,13 +1,15 @@
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import {
+	Link,
+	useNavigate,
+	useRouter,
+	useRouterState,
+} from "@tanstack/react-router";
 import { cn } from "cn";
-import { ChevronsUpDown, LogOut, ShieldCheck } from "lucide-react";
+import { ChevronsUpDown, LogOut } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Logo } from "@/components/brand/logo";
-import {
-	type NavItem,
-	navParaRol,
-	SESIONES,
-} from "@/components/dashboard/nav-config";
+import { type NavItem, navParaRol } from "@/components/dashboard/nav-config";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
 	DropdownMenu,
@@ -30,8 +32,10 @@ import {
 	SidebarMenuItem,
 	SidebarRail,
 } from "@/components/ui/sidebar";
-import type { Rol } from "@/data/types";
+import { etiquetaRol, nombreCompleto, type SesionUsuario } from "@/lib/auth";
 import { iniciales } from "@/lib/format";
+import { cerrarSesion as cerrarSesionServidor } from "@/server/auth";
+import type { Rol } from "@/types/models";
 
 const RUTA_INICIO: Record<Rol, string> = {
 	Administrador: "/admin",
@@ -44,18 +48,41 @@ function estaActivo(pathname: string, item: NavItem): boolean {
 	return pathname === item.to || pathname.startsWith(`${item.to}/`);
 }
 
-export function DashboardSidebar({ rol }: { rol: Rol }) {
+export function DashboardSidebar({
+	rol,
+	sesion,
+}: {
+	rol: Rol;
+	sesion: SesionUsuario;
+}) {
 	const pathname = useRouterState({ select: (s) => s.location.pathname });
 	const navigate = useNavigate();
-	const sesion = SESIONES[rol];
+	const router = useRouter();
 	const grupos = navParaRol(rol);
 	const inicio = RUTA_INICIO[rol];
+	const nombre = nombreCompleto(sesion);
+	const [saliendo, setSaliendo] = useState(false);
 
-	function cerrarSesion() {
-		toast.info("Sesión cerrada", {
-			description: "Volviendo al portal público. (Acción simulada)",
-		});
-		void navigate({ to: "/" });
+	async function cerrarSesion() {
+		setSaliendo(true);
+		try {
+			const resultado = await cerrarSesionServidor();
+
+			if (!resultado.ok) {
+				toast.error("No se pudo cerrar la sesión", {
+					description: resultado.error,
+				});
+				return;
+			}
+
+			toast.success("Sesión cerrada", {
+				description: "Volviendo al portal público.",
+			});
+			await router.invalidate();
+			await navigate({ to: "/" });
+		} finally {
+			setSaliendo(false);
+		}
 	}
 
 	return (
@@ -121,17 +148,20 @@ export function DashboardSidebar({ rol }: { rol: Rol }) {
 									className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
 								>
 									<Avatar className="size-8 rounded-lg">
-										<AvatarImage src={sesion.avatarUrl} alt={sesion.nombre} />
+										<AvatarImage
+											src={sesion.avatarUrl ?? undefined}
+											alt={nombre}
+										/>
 										<AvatarFallback className="rounded-lg bg-blue-soft text-primary">
-											{iniciales(sesion.nombre)}
+											{iniciales(nombre)}
 										</AvatarFallback>
 									</Avatar>
 									<span className="grid flex-1 text-left leading-tight">
 										<span className="truncate text-sm font-semibold">
-											{sesion.nombre}
+											{nombre}
 										</span>
 										<span className="truncate text-xs text-muted-foreground">
-											{sesion.rol}
+											{etiquetaRol(sesion.rol)}
 										</span>
 									</span>
 									<ChevronsUpDown
@@ -145,30 +175,20 @@ export function DashboardSidebar({ rol }: { rol: Rol }) {
 								align="end"
 								side="top"
 							>
-								<DropdownMenuLabel className="flex items-center gap-2">
-									<ShieldCheck
-										className="size-4 text-primary"
-										aria-hidden="true"
-									/>
-									Sesión demo
+								<DropdownMenuLabel>
+									<span className="block text-sm font-semibold">{nombre}</span>
+									<span className="block text-xs font-normal text-muted-foreground">
+										{sesion.correo}
+									</span>
 								</DropdownMenuLabel>
-								<DropdownMenuSeparator />
-								<DropdownMenuItem asChild>
-									<Link to="/admin">Ver como administrador</Link>
-								</DropdownMenuItem>
-								<DropdownMenuItem asChild>
-									<Link to="/vendedor">Ver como vendedor</Link>
-								</DropdownMenuItem>
-								<DropdownMenuItem asChild>
-									<Link to="/cliente">Ver como cliente</Link>
-								</DropdownMenuItem>
 								<DropdownMenuSeparator />
 								<DropdownMenuItem
 									onSelect={cerrarSesion}
+									disabled={saliendo}
 									className={cn("text-destructive focus:text-destructive")}
 								>
 									<LogOut aria-hidden="true" />
-									Cerrar sesión
+									{saliendo ? "Cerrando sesión…" : "Cerrar sesión"}
 								</DropdownMenuItem>
 							</DropdownMenuContent>
 						</DropdownMenu>

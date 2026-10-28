@@ -1,6 +1,6 @@
 # Despliegue — Cloudflare Workers + Supabase
 
-Última actualización: 2026-10-23.
+Última actualización: 2026-10-28.
 
 ## 1. Arquitectura de despliegue
 
@@ -65,7 +65,9 @@ SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
 2. Aplicar migraciones:
    - CLI: `supabase link --project-ref <ref>` y `supabase db push`; o
    - editor SQL: `pnpm db:bundle` y pegar todo `supabase/full_setup.sql`.
-3. Verificar 16 tablas, 6 vistas, 3 buckets y el job `remax-actualizar-cuotas`.
+3. Verificar 16 tablas, 6 vistas, 3 buckets, el job
+   `remax-actualizar-cuotas` y las funciones públicas
+   `listar_agentes_publicos()` y `resumen_publico()` (0009).
 4. Crear usuarios demo (solo desarrollo):
    ```bash
    pnpm db:seed-users
@@ -119,11 +121,19 @@ de runtime del Worker.
 
 - [ ] `/`, `/propiedades`, `/propiedades/$id` responden 200.
 - [ ] `/robots.txt` y meta `noindex` presentes (prototipo).
-- [ ] Login real (cuando esté conectado) y sesión persistente.
-- [ ] Un cliente no puede abrir `/admin` ni leer datos ajenos vía API.
+- [x] Login real y sesión persistente (validado en desarrollo).
+- [x] Un cliente no puede abrir `/admin` ni `/vendedor`; redirige a `/cliente`.
+- [x] Un vendedor no puede abrir `/admin`; redirige a `/vendedor`.
+- [x] Las consultas RLS directas desde el navegador devuelven solo filas
+      propias o públicas.
+- [x] `pnpm build`, `pnpm tsc --noEmit` y `pnpm check` pasan; `dist/client` no
+      contiene la service role ni claves secretas.
+- [x] `dist/server/.dev.vars` es solo para `pnpm preview`; está ignorado por git
+      y Wrangler no lo sube en `deploy`. Los secretos reales se cargan con
+      `wrangler secret put`.
 - [ ] Subida de contrato/comprobante respeta 15/10 MB y MIME.
 - [ ] Descarga privada solo para admin/vendedor/cliente del alquiler.
-- [ ] `dist/client` no contiene `SUPABASE_SERVICE_ROLE_KEY`.
+- [x] `dist/client` no contiene `SUPABASE_SERVICE_ROLE_KEY`.
 - [ ] Errores 401/403 de Supabase se muestran sin filtrar detalles internos.
 - [ ] El job de cuotas corre a las 00:05 America/La_Paz.
 
@@ -131,7 +141,7 @@ de runtime del Worker.
 
 - Worker: `wrangler deployments list` y `wrangler rollback [id]`.
 - Base de datos: las migraciones no se revierten automáticamente. Si un cambio
-  falla, crear una migración correctiva `0008_...sql`; no editar la aplicada.
+  falla, crear una migración correctiva `0011_...sql`; no editar la aplicada.
 - Seed: solo desarrollo. Nunca ejecutar `seed-users.ts` contra producción (el
   script se niega, pero la disciplina importa).
 - Backups: activar PITR/backups del proyecto Supabase antes de migrar datos

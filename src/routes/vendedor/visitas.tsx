@@ -10,7 +10,7 @@ import {
 	Search,
 	X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge, visitaTone } from "@/components/common/status-badge";
@@ -33,13 +33,16 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { VisitaDetalle } from "@/data";
-import { getVisitasDetalle } from "@/data";
-import type { VisitaEstado } from "@/data/types";
-import { vendedorActual } from "@/data/vendedores";
-import { formatFechaSemana, formatHora } from "@/lib/format";
+import { ESTADO_VISITA_UI_A_DB } from "@/lib/admin";
+import { fechaDiaLaPaz, formatFechaSemana, formatHora } from "@/lib/format";
+import {
+	cambiarEstadoVisitaActor,
+	listarVisitasVendedor,
+} from "@/server/paneles";
+import type { VisitaDetalle, VisitaEstado } from "@/types/models";
 
 export const Route = createFileRoute("/vendedor/visitas")({
+	loader: () => listarVisitasVendedor(),
 	head: () => ({
 		meta: [{ title: "Mis visitas · Panel vendedor · RE/MAX Potosí" }],
 	}),
@@ -48,14 +51,17 @@ export const Route = createFileRoute("/vendedor/visitas")({
 
 type FiltroEstado = "todas" | VisitaEstado;
 const ESTADOS: VisitaEstado[] = ["Pendiente", "Realizada", "Cancelada"];
-const HOY = new Date("2026-10-17T00:00:00").getTime();
 
 function VendedorVisitas() {
-	const [lista, setLista] = useState<VisitaDetalle[]>(() =>
-		getVisitasDetalle().filter((v) => v.vendedorId === vendedorActual.id),
-	);
+	const { ahora, visitas } = Route.useLoaderData();
+	const [lista, setLista] = useState<VisitaDetalle[]>(visitas);
+	const [actualizando, setActualizando] = useState<string | null>(null);
 	const [q, setQ] = useState("");
 	const [estado, setEstado] = useState<FiltroEstado>("todas");
+
+	useEffect(() => {
+		setLista(visitas);
+	}, [visitas]);
 
 	const filtradas = useMemo(() => {
 		const termino = q.trim().toLowerCase();
@@ -73,7 +79,7 @@ function VendedorVisitas() {
 	const agenda = useMemo(() => {
 		const grupos = new Map<string, VisitaDetalle[]>();
 		for (const v of filtradas) {
-			const clave = v.fechaHora.slice(0, 10);
+			const clave = fechaDiaLaPaz(v.fechaHora);
 			const lista = grupos.get(clave) ?? [];
 			lista.push(v);
 			grupos.set(clave, lista);
@@ -81,34 +87,60 @@ function VendedorVisitas() {
 		return [...grupos.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 	}, [filtradas]);
 
-	function cambiarEstado(visitaId: string, nuevo: VisitaEstado) {
-		setLista((prev) =>
-			prev.map((v) => (v.id === visitaId ? { ...v, estado: nuevo } : v)),
-		);
-		toast.info(`Visita ${nuevo.toLowerCase()}`, {
-			description: "El estado se actualizó en la agenda. (Acción simulada)",
-		});
+	async function cambiarEstado(visitaId: string, nuevo: VisitaEstado) {
+		if (actualizando) return;
+		setActualizando(visitaId);
+		try {
+			const resultado = await cambiarEstadoVisitaActor({
+				data: {
+					visitaId,
+					estado: ESTADO_VISITA_UI_A_DB[nuevo],
+				},
+			});
+
+			if (!resultado.ok) {
+				toast.error("No se pudo actualizar la visita", {
+					description: resultado.error,
+				});
+				return;
+			}
+
+			setLista((prev) =>
+				prev.map((v) => (v.id === visitaId ? { ...v, estado: nuevo } : v)),
+			);
+			toast.success(`Visita ${nuevo.toLowerCase()}`, {
+				description: "El estado se actualizó en la agenda.",
+			});
+		} catch (error) {
+			toast.error("No se pudo actualizar la visita", {
+				description:
+					error instanceof Error ? error.message : "Inténtalo de nuevo.",
+			});
+		} finally {
+			setActualizando(null);
+		}
 	}
 
 	function acciones(v: VisitaDetalle) {
 		const pendiente = v.estado === "Pendiente";
+		const ocupada = actualizando === v.id;
 		return (
 			<div className="flex items-center justify-end gap-2">
 				<Button
 					variant="outline"
 					size="sm"
-					disabled={!pendiente}
-					onClick={() => cambiarEstado(v.id, "Realizada")}
+					disabled={!pendiente || Boolean(actualizando)}
+					onClick={() => void cambiarEstado(v.id, "Realizada")}
 				>
 					<Check aria-hidden="true" />
-					Realizada
+					{ocupada ? "Guardando…" : "Realizada"}
 				</Button>
 				<Button
 					variant="ghost"
 					size="sm"
-					disabled={!pendiente}
+					disabled={!pendiente || Boolean(actualizando)}
 					className="text-muted-foreground"
-					onClick={() => cambiarEstado(v.id, "Cancelada")}
+					onClick={() => void cambiarEstado(v.id, "Cancelada")}
 				>
 					<X aria-hidden="true" />
 					Cancelar
@@ -189,9 +221,9 @@ function VendedorVisitas() {
 									<div className="mb-3 flex items-center gap-3">
 										<span className="inline-flex items-center gap-2 rounded-full bg-blue-soft px-3 py-1 font-display text-xs font-bold text-blue-deep">
 											<CalendarDays className="size-3.5" aria-hidden="true" />
-											{formatFechaSemana(`${dia}T00:00:00`)}
+											{formatFechaSemana(`${dia}T12:00:00-04:00`)}
 										</span>
-										{new Date(`${dia}T00:00:00`).getTime() >= HOY ? (
+										{dia >= fechaDiaLaPaz(ahora) ? (
 											<span className="text-xs font-medium text-success">
 												Próxima
 											</span>

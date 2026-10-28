@@ -11,7 +11,7 @@ import {
 	ThumbsUp,
 } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
-import { oficina } from "@/data/oficina";
+import { sitio } from "@/lib/site";
 
 const iconosRed: Record<string, typeof Globe> = {
 	Facebook: ThumbsUp,
@@ -49,7 +49,7 @@ export function PublicFooter() {
 							y cobros al día.
 						</p>
 						<div className="mt-6 flex items-center gap-2">
-							{oficina.redes.map((red) => {
+							{sitio.redes.map((red) => {
 								const Icono = iconosRed[red.nombre] ?? Globe;
 								return (
 									<a
@@ -114,7 +114,7 @@ export function PublicFooter() {
 									className="mt-0.5 size-4 shrink-0 text-white/50"
 									aria-hidden="true"
 								/>
-								<span>{oficina.direccion}</span>
+								<span>{sitio.direccion}</span>
 							</li>
 							<li className="flex gap-3">
 								<Phone
@@ -122,9 +122,9 @@ export function PublicFooter() {
 									aria-hidden="true"
 								/>
 								<span>
-									{oficina.telefono}
+									{sitio.telefono}
 									<br />
-									WhatsApp {oficina.whatsapp}
+									WhatsApp {sitio.whatsapp}
 								</span>
 							</li>
 							<li className="flex gap-3">
@@ -132,7 +132,7 @@ export function PublicFooter() {
 									className="mt-0.5 size-4 shrink-0 text-white/50"
 									aria-hidden="true"
 								/>
-								<span>{oficina.email}</span>
+								<span>{sitio.email}</span>
 							</li>
 							<li className="flex gap-3">
 								<Clock
@@ -140,7 +140,7 @@ export function PublicFooter() {
 									aria-hidden="true"
 								/>
 								<span className="space-y-1">
-									{oficina.horarios.map((h) => (
+									{sitio.horarios.map((h) => (
 										<span key={h.dias} className="block">
 											<span className="text-white/90">{h.dias}:</span> {h.horas}
 										</span>
@@ -156,10 +156,7 @@ export function PublicFooter() {
 						© {new Date().getFullYear()} RE/MAX Potosí · Oficina independiente.
 						Logotipo y marca de RE/MAX usados con fines demostrativos.
 					</p>
-					<p>
-						Prototipo de gestión y alquiler de inmuebles · Datos de ejemplo,
-						ficticios.
-					</p>
+					<p>Gestión y alquiler de inmuebles en Potosí, Bolivia.</p>
 				</div>
 			</div>
 		</footer>

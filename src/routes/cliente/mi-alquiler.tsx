@@ -1,4 +1,9 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import {
+	createFileRoute,
+	Link,
+	useNavigate,
+	useRouter,
+} from "@tanstack/react-router";
 import { cn } from "cn";
 import {
 	Building2,
@@ -12,7 +17,7 @@ import {
 	Search,
 	Wallet,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/common/empty-state";
 import { SmartImage } from "@/components/common/smart-image";
@@ -48,16 +53,18 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import { getAlquileresDetalle, getPagosDeAlquiler } from "@/data";
-import { clienteActual } from "@/data/clientes";
 import {
 	formatBs,
 	formatBsMes,
 	formatFecha,
 	formatPeriodo,
 } from "@/lib/format";
+import { listarAlquileresCliente } from "@/server/alquileres/consultas";
+import { reportarPagoCliente } from "@/server/alquileres/registrar";
+import type { AlquilerDetalleVista } from "@/types/alquileres";
 
 export const Route = createFileRoute("/cliente/mi-alquiler")({
+	loader: () => listarAlquileresCliente(),
 	validateSearch: (search: Record<string, unknown>): { alquiler?: string } => ({
 		alquiler: typeof search.alquiler === "string" ? search.alquiler : undefined,
 	}),
@@ -68,17 +75,13 @@ export const Route = createFileRoute("/cliente/mi-alquiler")({
 });
 
 function ClienteAlquiler() {
+	const router = useRouter();
 	const navigate = useNavigate();
 	const { alquiler: alquilerParam } = Route.useSearch();
-
-	const alquileres = useMemo(
-		() =>
-			getAlquileresDetalle().filter((a) => a.clienteId === clienteActual.id),
-		[],
-	);
+	const alquileres = Route.useLoaderData();
 
 	const [pagarAbierto, setPagarAbierto] = useState(false);
-	const [pagado, setPagado] = useState(false);
+	const [enviando, setEnviando] = useState(false);
 
 	const seleccionado =
 		alquileres.find((a) => a.id === alquilerParam) ??
@@ -86,7 +89,7 @@ function ClienteAlquiler() {
 		alquileres[0];
 
 	function seleccionar(id: string) {
-		setPagado(false);
+		setPagarAbierto(false);
 		void navigate({
 			to: "/cliente/mi-alquiler",
 			search: { alquiler: id },
@@ -118,23 +121,93 @@ function ClienteAlquiler() {
 		);
 	}
 
-	const inmueble = seleccionado.inmueble;
-	const vendedor = seleccionado.vendedor;
-	const pagos = getPagosDeAlquiler(seleccionado.id);
-	const pendientes = pagos.filter((p) => p.estado !== "Pagada");
-	const cuotaActual = pendientes[0];
+	return (
+		<DetalleContrato
+			alquiler={seleccionado}
+			alquileres={alquileres}
+			pagarAbierto={pagarAbierto}
+			enviando={enviando}
+			onSeleccionar={seleccionar}
+			onAbrirPago={() => setPagarAbierto(true)}
+			onCerrarPago={() => setPagarAbierto(false)}
+			onConfirmarPago={async () => {
+				const cuota = seleccionado.cuotaActual;
+				if (!cuota) {
+					toast.error("No tienes cuotas pendientes");
+					return;
+				}
+
+				setEnviando(true);
+				try {
+					await reportarPagoCliente({
+						data: {
+							alquilerId: seleccionado.id,
+							cuotaId: cuota.id,
+							monto: cuota.monto,
+						},
+					});
+					setPagarAbierto(false);
+					toast.success("Pago reportado", {
+						description: `${formatBs(cuota.monto)} · ${formatPeriodo(cuota.periodo)}. Queda pendiente de validación.`,
+					});
+					await router.invalidate();
+				} catch (error) {
+					toast.error("No se pudo reportar el pago", {
+						description:
+							error instanceof Error
+								? error.message
+								: "Inténtalo de nuevo en unos segundos.",
+					});
+				} finally {
+					setEnviando(false);
+				}
+			}}
+			onDescargarContrato={() => {
+				if (!seleccionado.contratoUrl) {
+					toast.info("Contrato no disponible", {
+						description:
+							"Tu contrato aún no tiene el PDF firmado en el almacenamiento.",
+					});
+					return;
+				}
+				window.open(seleccionado.contratoUrl, "_blank", "noopener,noreferrer");
+			}}
+		/>
+	);
+}
+
+function DetalleContrato({
+	alquiler,
+	alquileres,
+	pagarAbierto,
+	enviando,
+	onSeleccionar,
+	onAbrirPago,
+	onCerrarPago,
+	onConfirmarPago,
+	onDescargarContrato,
+}: {
+	alquiler: AlquilerDetalleVista;
+	alquileres: AlquilerDetalleVista[];
+	pagarAbierto: boolean;
+	enviando: boolean;
+	onSeleccionar: (id: string) => void;
+	onAbrirPago: () => void;
+	onCerrarPago: () => void;
+	onConfirmarPago: () => Promise<void>;
+	onDescargarContrato: () => void;
+}) {
+	const inmueble = alquiler.inmueble;
+	const vendedor = alquiler.vendedor;
+	const pagos = alquiler.pagos;
+	const pendientes = pagos.filter(
+		(p) => p.estado !== "Pagada" && p.estado !== "Anulada",
+	);
+	const cuotaActual = alquiler.cuotaActual ?? pendientes[0];
 	const totalPagado = pagos
 		.filter((p) => p.estado === "Pagada")
 		.reduce((acc, p) => acc + p.monto, 0);
 	const alDia = cuotaActual?.estado !== "En mora";
-
-	function confirmarPago() {
-		setPagado(true);
-		setPagarAbierto(false);
-		toast.success("Pago realizado", {
-			description: `${formatBs(cuotaActual?.monto ?? 0)} · ${formatPeriodo(cuotaActual?.periodo ?? "")}. (Acción simulada)`,
-		});
-	}
 
 	return (
 		<>
@@ -142,14 +215,7 @@ function ClienteAlquiler() {
 				title="Mi alquiler"
 				description="Detalle de tus contratos, próxima cuota e historial de pagos."
 				actions={
-					<Button
-						variant="outline"
-						onClick={() =>
-							toast.info("Descargando contrato", {
-								description: `${seleccionado.codigo}.pdf (Acción simulada)`,
-							})
-						}
-					>
+					<Button variant="outline" onClick={onDescargarContrato}>
 						<Download aria-hidden="true" />
 						Descargar contrato
 					</Button>
@@ -163,18 +229,18 @@ function ClienteAlquiler() {
 					</h2>
 					<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
 						{alquileres.map((a) => {
-							const activo = a.id === seleccionado.id;
+							const activo = a.id === alquiler.id;
 							return (
 								<button
 									key={a.id}
 									type="button"
-									onClick={() => seleccionar(a.id)}
+									onClick={() => onSeleccionar(a.id)}
 									aria-pressed={activo}
 									className={cn(
 										"flex items-stretch gap-3 overflow-hidden rounded-xl border bg-card text-left transition-[border-color,box-shadow,transform] duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
 										activo
-											? "border-primary shadow-[var(--shadow-lift)] ring-1 ring-primary"
-											: "border-border hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[var(--shadow-soft)]",
+											? "border-primary shadow-(--shadow-lift) ring-1 ring-primary"
+											: "border-border hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-(--shadow-soft)",
 									)}
 								>
 									<SmartImage
@@ -214,10 +280,8 @@ function ClienteAlquiler() {
 								<span className="text-xs font-semibold tracking-wide text-primary uppercase">
 									Próxima cuota
 								</span>
-								<StatusBadge
-									tone={pagado ? "success" : cuotaTone[cuotaActual.estado]}
-								>
-									{pagado ? "Pagada" : cuotaActual.estado}
+								<StatusBadge tone={cuotaTone[cuotaActual.estado]}>
+									{cuotaActual.estado}
 								</StatusBadge>
 							</div>
 							<p className="mt-2 font-display text-3xl font-extrabold tabular text-foreground">
@@ -230,35 +294,29 @@ function ClienteAlquiler() {
 									? ` · incluye recargo de ${formatBs(cuotaActual.recargoMora)}`
 									: ""}
 							</p>
-							{pagado ? (
-								<p className="mt-3 inline-flex items-center gap-2 rounded-lg bg-success-soft px-3 py-2 text-sm font-medium text-success">
-									<CheckCircle2 className="size-4" aria-hidden="true" />
-									Pago registrado correctamente
-								</p>
-							) : (
-								<Button
-									variant="cta"
-									className="mt-4"
-									onClick={() => setPagarAbierto(true)}
-								>
-									<CreditCard aria-hidden="true" />
-									Pagar cuota
-								</Button>
-							)}
+							<Button
+								variant="cta"
+								className="mt-4"
+								onClick={onAbrirPago}
+								disabled={enviando}
+							>
+								<CreditCard aria-hidden="true" />
+								Pagar cuota
+							</Button>
 						</div>
 						<div className="grid grid-cols-2 gap-4 rounded-xl border border-border bg-secondary/50 p-4 lg:w-72">
 							<Metrica
 								etiqueta="Alquiler mensual"
-								valor={formatBs(seleccionado.montoMensual)}
+								valor={formatBs(alquiler.montoMensual)}
 							/>
 							<Metrica
 								etiqueta="Día de cobro"
-								valor={`Día ${seleccionado.diaCobro}`}
+								valor={`Día ${alquiler.diaCobro}`}
 							/>
 							<Metrica etiqueta="Total pagado" valor={formatBs(totalPagado)} />
 							<Metrica
 								etiqueta="Estado contrato"
-								valor={seleccionado.estado}
+								valor={alquiler.estado}
 								tono={alDia ? "success" : "danger"}
 							/>
 						</div>
@@ -304,6 +362,9 @@ function ClienteAlquiler() {
 										<TableHead className="hidden md:table-cell">
 											Medio
 										</TableHead>
+										<TableHead className="hidden lg:table-cell">
+											Comprobante
+										</TableHead>
 										<TableHead>Monto</TableHead>
 										<TableHead className="pr-5 text-right">Estado</TableHead>
 									</TableRow>
@@ -323,14 +384,30 @@ function ClienteAlquiler() {
 											<TableCell className="hidden text-muted-foreground md:table-cell">
 												{p.medioPago ?? "—"}
 											</TableCell>
+											<TableCell className="hidden lg:table-cell">
+												{p.comprobante ? (
+													<Button asChild variant="ghost" size="icon-sm">
+														<a
+															href={p.comprobante}
+															target="_blank"
+															rel="noreferrer"
+															aria-label={`Ver comprobante de la cuota ${p.numeroCuota}`}
+														>
+															<Download aria-hidden="true" />
+														</a>
+													</Button>
+												) : (
+													<span className="text-xs text-muted-foreground">
+														—
+													</span>
+												)}
+											</TableCell>
 											<TableCell className="whitespace-nowrap font-medium tabular text-foreground">
 												{formatBs(p.monto)}
 											</TableCell>
 											<TableCell className="pr-5 text-right">
 												<StatusBadge tone={cuotaTone[p.estado]}>
-													{p.id === cuotaActual?.id && pagado
-														? "Pagada"
-														: p.estado}
+													{p.estado}
 												</StatusBadge>
 											</TableCell>
 										</TableRow>
@@ -362,29 +439,26 @@ function ClienteAlquiler() {
 								{inmueble.direccion}
 							</p>
 							<div className="mt-2">
-								<StatusBadge tone={alquilerTone[seleccionado.estado]}>
-									Contrato {seleccionado.estado.toLowerCase()}
+								<StatusBadge tone={alquilerTone[alquiler.estado]}>
+									Contrato {alquiler.estado.toLowerCase()}
 								</StatusBadge>
 							</div>
 						</div>
 
-						<Fila etiqueta="Código de contrato" valor={seleccionado.codigo} />
-						<Fila
-							etiqueta="Inicio"
-							valor={formatFecha(seleccionado.fechaInicio)}
-						/>
-						<Fila etiqueta="Fin" valor={formatFecha(seleccionado.fechaFin)} />
+						<Fila etiqueta="Código de contrato" valor={alquiler.codigo} />
+						<Fila etiqueta="Inicio" valor={formatFecha(alquiler.fechaInicio)} />
+						<Fila etiqueta="Fin" valor={formatFecha(alquiler.fechaFin)} />
 						<Fila
 							etiqueta="Alquiler mensual"
-							valor={formatBsMes(seleccionado.montoMensual)}
+							valor={formatBsMes(alquiler.montoMensual)}
 						/>
 						<Fila
 							etiqueta="Depósito de garantía"
-							valor={formatBs(seleccionado.deposito)}
+							valor={formatBs(alquiler.deposito)}
 						/>
 						<Fila
 							etiqueta="Contrato escaneado"
-							valor={seleccionado.contratoEscaneado ? "Archivado" : "Pendiente"}
+							valor={alquiler.contratoEscaneado ? "Archivado" : "Pendiente"}
 						/>
 						<Separator />
 						<div className="flex items-center gap-3">
@@ -397,7 +471,7 @@ function ClienteAlquiler() {
 								</p>
 								<p className="text-xs text-muted-foreground">
 									{vendedor?.nombre ?? "Sin asignar"} ·{" "}
-									{vendedor?.telefono ?? "—"}
+									{vendedor?.telefono || "—"}
 								</p>
 							</div>
 						</div>
@@ -405,7 +479,10 @@ function ClienteAlquiler() {
 				</Card>
 			</div>
 
-			<Dialog open={pagarAbierto} onOpenChange={setPagarAbierto}>
+			<Dialog
+				open={pagarAbierto}
+				onOpenChange={(open) => (open ? onAbrirPago() : onCerrarPago())}
+			>
 				<DialogContent>
 					<DialogHeader>
 						<DialogTitle className="font-display">
@@ -419,22 +496,29 @@ function ClienteAlquiler() {
 					<div className="flex flex-col items-center gap-4">
 						<div className="grid place-items-center rounded-xl border border-border bg-white p-2">
 							<QrVisual
-								value={`remax-potosi:${seleccionado.codigo}:${cuotaActual?.monto ?? 0}`}
+								value={`remax-potosi:${alquiler.codigo}:${cuotaActual?.monto ?? 0}`}
 							/>
 						</div>
 						<p className="text-center text-sm text-muted-foreground">
-							Escanea el código con tu app bancaria o selecciona tarjeta. El
-							pago se acredita de inmediato.
+							Escanea el código con tu app bancaria. El pago quedará reportado y
+							pendiente de validación por la oficina.
 						</p>
 						<div className="flex w-full flex-col gap-2">
-							<Button variant="cta" className="w-full" onClick={confirmarPago}>
+							<Button
+								variant="cta"
+								className="w-full"
+								onClick={() => void onConfirmarPago()}
+								disabled={enviando || !cuotaActual}
+							>
 								<Wallet aria-hidden="true" />
-								Confirmar pago de {formatBs(cuotaActual?.monto ?? 0)}
+								{enviando
+									? "Reportando…"
+									: `Confirmar pago de ${formatBs(cuotaActual?.monto ?? 0)}`}
 							</Button>
 						</div>
 					</div>
 					<DialogFooter className="sm:justify-center">
-						<Button variant="ghost" onClick={() => setPagarAbierto(false)}>
+						<Button variant="ghost" onClick={onCerrarPago} disabled={enviando}>
 							Cancelar
 						</Button>
 					</DialogFooter>

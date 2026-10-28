@@ -77,6 +77,13 @@ export const cuotaTone: Record<string, Tone> = {
 	Pagada: "success",
 	"Por vencer": "warning",
 	"En mora": "danger",
+	Anulada: "muted",
+};
+
+export const comisionTone: Record<string, Tone> = {
+	Pendiente: "warning",
+	Pagada: "success",
+	Anulada: "muted",
 };
 
 export const rolTone: Record<string, Tone> = {
@@ -89,4 +96,5 @@ export const alquilerTone: Record<string, Tone> = {
 	Vigente: "success",
 	Finalizado: "muted",
 	Suspendido: "danger",
+	Cancelado: "muted",
 };

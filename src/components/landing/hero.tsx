@@ -18,10 +18,16 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import type { CatalogSearch } from "@/lib/catalog";
+import type { CatalogSearch, ZonaOpcion } from "@/lib/catalog";
 import { TIPOS_INMUEBLE } from "@/lib/catalog";
+import { formatNumber } from "@/lib/format";
 
-export function Hero() {
+interface HeroProps {
+	zonas?: ZonaOpcion[];
+	totalDisponibles?: number;
+}
+
+export function Hero({ zonas: zonasDisponibles, totalDisponibles }: HeroProps) {
 	const navigate = useNavigate();
 	const [tipo, setTipo] = useState<string>("todos");
 	const [zonas, setZonas] = useState<string[]>([]);
@@ -141,6 +147,7 @@ export function Hero() {
 									id="hero-zona"
 									mode="single"
 									value={zonas}
+									zonas={zonasDisponibles}
 									onChange={setZonas}
 									placeholder="Todas las zonas"
 								/>
@@ -202,7 +209,9 @@ export function Hero() {
 								Inmuebles activos
 							</dt>
 							<dd className="font-display text-2xl font-extrabold tabular text-foreground">
-								340+
+								{totalDisponibles !== undefined
+									? formatNumber(totalDisponibles)
+									: "340+"}
 							</dd>
 						</div>
 						<div>

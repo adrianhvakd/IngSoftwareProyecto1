@@ -9,7 +9,7 @@ import {
 	UserRound,
 	X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge, visitaTone } from "@/components/common/status-badge";
@@ -23,12 +23,15 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import type { VisitaDetalle } from "@/data";
-import { getVisitasDetalle } from "@/data";
-import { clienteActual } from "@/data/clientes";
 import { formatFechaSemana, formatHora } from "@/lib/format";
+import {
+	cambiarEstadoVisitaActor,
+	listarVisitasCliente,
+} from "@/server/paneles";
+import type { VisitaDetalle } from "@/types/models";
 
 export const Route = createFileRoute("/cliente/")({
+	loader: () => listarVisitasCliente(),
 	head: () => ({
 		meta: [{ title: "Mis visitas · Mi cuenta · RE/MAX Potosí" }],
 	}),
@@ -36,9 +39,13 @@ export const Route = createFileRoute("/cliente/")({
 });
 
 function ClienteVisitas() {
-	const [lista, setLista] = useState<VisitaDetalle[]>(() =>
-		getVisitasDetalle().filter((v) => v.clienteId === clienteActual.id),
-	);
+	const { visitas } = Route.useLoaderData();
+	const [lista, setLista] = useState<VisitaDetalle[]>(visitas);
+	const [cancelando, setCancelando] = useState<string | null>(null);
+
+	useEffect(() => {
+		setLista(visitas);
+	}, [visitas]);
 
 	const pendientes = useMemo(
 		() => lista.filter((v) => v.estado === "Pendiente"),
@@ -49,14 +56,37 @@ function ClienteVisitas() {
 		[lista],
 	);
 
-	function cancelar(visitaId: string) {
-		setLista((prev) =>
-			prev.map((v) => (v.id === visitaId ? { ...v, estado: "Cancelada" } : v)),
-		);
-		toast.info("Visita cancelada", {
-			description:
-				"Coordinaremos una nueva fecha si lo necesitas. (Acción simulada)",
-		});
+	async function cancelar(visitaId: string) {
+		if (cancelando) return;
+		setCancelando(visitaId);
+		try {
+			const resultado = await cambiarEstadoVisitaActor({
+				data: { visitaId, estado: "cancelada" },
+			});
+
+			if (!resultado.ok) {
+				toast.error("No se pudo cancelar la visita", {
+					description: resultado.error,
+				});
+				return;
+			}
+
+			setLista((prev) =>
+				prev.map((v) =>
+					v.id === visitaId ? { ...v, estado: "Cancelada" } : v,
+				),
+			);
+			toast.success("Visita cancelada", {
+				description: "Coordinaremos una nueva fecha si lo necesitas.",
+			});
+		} catch (error) {
+			toast.error("No se pudo cancelar la visita", {
+				description:
+					error instanceof Error ? error.message : "Inténtalo de nuevo.",
+			});
+		} finally {
+			setCancelando(null);
+		}
 	}
 
 	return (
@@ -164,7 +194,8 @@ function ClienteVisitas() {
 										variant="ghost"
 										size="sm"
 										className="text-muted-foreground"
-										onClick={() => cancelar(v.id)}
+										disabled={Boolean(cancelando)}
+										onClick={() => void cancelar(v.id)}
 									>
 										<X aria-hidden="true" />
 										Cancelar

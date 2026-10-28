@@ -2,13 +2,16 @@ import { Link } from "@tanstack/react-router";
 import { ArrowUpRight } from "lucide-react";
 import { SectionHeading } from "@/components/common/section-heading";
 import { SmartImage } from "@/components/common/smart-image";
-import { inmuebles } from "@/data/inmuebles";
-import type { TipoInmueble } from "@/data/types";
+import type { TipoInmueble } from "@/types/models";
 
 interface Categoria {
 	tipo: TipoInmueble;
 	descripcion: string;
 	imagen: string;
+}
+
+interface CategoriesProps {
+	conteos: Record<TipoInmueble, number>;
 }
 
 const CATEGORIAS: Categoria[] = [
@@ -32,7 +35,7 @@ const CATEGORIAS: Categoria[] = [
 	},
 ];
 
-export function Categories() {
+export function Categories({ conteos }: CategoriesProps) {
 	return (
 		<section className="bg-secondary/60 py-16 lg:py-24">
 			<div className="container-page">
@@ -43,9 +46,7 @@ export function Categories() {
 
 				<div className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-3">
 					{CATEGORIAS.map((categoria) => {
-						const cantidad = inmuebles.filter(
-							(i) => i.tipo === categoria.tipo,
-						).length;
+						const cantidad = conteos[categoria.tipo] ?? 0;
 						return (
 							<Link
 								key={categoria.tipo}

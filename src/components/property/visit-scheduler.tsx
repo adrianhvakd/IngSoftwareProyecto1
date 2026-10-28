@@ -1,6 +1,8 @@
+import { useRouteContext } from "@tanstack/react-router";
 import { cn } from "cn";
 import { CalendarIcon, Check, Clock, Mail, Phone, User } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -20,24 +22,24 @@ import {
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
-import type { Vendedor } from "@/data/types";
+import { nombreCompleto, type SesionUsuario } from "@/lib/auth";
 import { formatFechaLarga, iniciales } from "@/lib/format";
-
-const HOY = new Date("2026-10-17T00:00:00");
+import { agendarVisita } from "@/server/visitas";
+import type { AgenteResumen } from "@/types/domain";
 
 const FRANJAS = [
 	{ id: "09:00", hora: "09:00 – 10:00", disponible: true },
 	{ id: "10:00", hora: "10:00 – 11:00", disponible: true },
-	{ id: "11:00", hora: "11:00 – 12:00", disponible: false },
+	{ id: "11:00", hora: "11:00 – 12:00", disponible: true },
 	{ id: "15:00", hora: "15:00 – 16:00", disponible: true },
 	{ id: "16:00", hora: "16:00 – 17:00", disponible: true },
-	{ id: "17:00", hora: "17:00 – 18:00", disponible: false },
+	{ id: "17:00", hora: "17:00 – 18:00", disponible: true },
 ];
 
 interface VisitSchedulerProps {
 	inmuebleId: string;
 	inmuebleTitulo: string;
-	agente?: Vendedor;
+	agente?: AgenteResumen;
 }
 
 interface Errores {
@@ -48,19 +50,44 @@ interface Errores {
 	franja?: string;
 }
 
+/** Construye un instante con la zona horaria de Bolivia (UTC-4, sin DST). */
+function fechaHoraBolivia(fecha: Date, franja: string): string {
+	const horaInicio = franja.split("–")[0]?.trim() ?? "09:00";
+	const [hora = "09", minuto = "00"] = horaInicio.split(":");
+	const anio = fecha.getFullYear();
+	const mes = String(fecha.getMonth() + 1).padStart(2, "0");
+	const dia = String(fecha.getDate()).padStart(2, "0");
+	return `${anio}-${mes}-${dia}T${hora.padStart(2, "0")}:${minuto.padStart(2, "0")}:00-04:00`;
+}
+
 export function VisitScheduler({
+	inmuebleId,
 	inmuebleTitulo,
 	agente,
 }: VisitSchedulerProps) {
-	const [nombre, setNombre] = useState("");
-	const [telefono, setTelefono] = useState("");
-	const [email, setEmail] = useState("");
+	const { sesion } = useRouteContext({ from: "__root__" }) as {
+		sesion: SesionUsuario | null;
+	};
+	const nombreInicial = sesion ? nombreCompleto(sesion) : "";
+	const telefonoInicial = sesion?.telefono ?? "";
+	const correoInicial = sesion?.correo ?? "";
+
+	const [nombre, setNombre] = useState(nombreInicial);
+	const [telefono, setTelefono] = useState(telefonoInicial);
+	const [email, setEmail] = useState(correoInicial);
 	const [mensaje, setMensaje] = useState("");
 	const [fecha, setFecha] = useState<Date | undefined>();
 	const [franja, setFranja] = useState<string | null>(null);
 	const [errores, setErrores] = useState<Errores>({});
+	const [errorEnvio, setErrorEnvio] = useState<string | null>(null);
 	const [enviado, setEnviado] = useState(false);
 	const [enviando, setEnviando] = useState(false);
+
+	const hoy = useMemo(() => {
+		const valor = new Date();
+		valor.setHours(0, 0, 0, 0);
+		return valor;
+	}, []);
 
 	function validar(): boolean {
 		const nuevos: Errores = {};
@@ -81,25 +108,55 @@ export function VisitScheduler({
 		return Object.keys(nuevos).length === 0;
 	}
 
-	function enviar(evento: React.FormEvent<HTMLFormElement>) {
+	async function enviar(evento: React.FormEvent<HTMLFormElement>) {
 		evento.preventDefault();
-		if (!validar()) return;
+		setErrorEnvio(null);
+		if (!validar() || !fecha || !franja) return;
+
 		setEnviando(true);
-		window.setTimeout(() => {
-			setEnviando(false);
+		try {
+			const resultado = await agendarVisita({
+				data: {
+					inmuebleId,
+					fechaHora: fechaHoraBolivia(fecha, franja),
+					nombre: nombre.trim() || undefined,
+					telefono: telefono.trim() || undefined,
+					correo: email.trim() || undefined,
+					notas: mensaje.trim() || undefined,
+				},
+			});
+
+			if (!resultado.ok) {
+				setErrorEnvio(resultado.error);
+				toast.error("No se pudo agendar la visita", {
+					description: resultado.error,
+				});
+				return;
+			}
+
 			setEnviado(true);
-		}, 700);
+		} catch {
+			const mensajeError =
+				"No se pudo conectar con el servicio de visitas. Inténtalo de nuevo.";
+			setErrorEnvio(mensajeError);
+			toast.error("No se pudo agendar la visita", {
+				description: mensajeError,
+			});
+		} finally {
+			setEnviando(false);
+		}
 	}
 
 	function reiniciar() {
 		setEnviado(false);
-		setNombre("");
-		setTelefono("");
-		setEmail("");
+		setNombre(nombreInicial);
+		setTelefono(telefonoInicial);
+		setEmail(correoInicial);
 		setMensaje("");
 		setFecha(undefined);
 		setFranja(null);
 		setErrores({});
+		setErrorEnvio(null);
 	}
 
 	return (
@@ -107,7 +164,10 @@ export function VisitScheduler({
 			<div className="flex items-center gap-3">
 				{agente ? (
 					<Avatar className="size-11 ring-2 ring-blue-soft">
-						<AvatarImage src={agente.avatarUrl} alt={agente.nombre} />
+						<AvatarImage
+							src={agente.avatarUrl ?? undefined}
+							alt={agente.nombre}
+						/>
 						<AvatarFallback className="bg-blue-soft text-primary">
 							{iniciales(agente.nombre)}
 						</AvatarFallback>
@@ -233,7 +293,7 @@ export function VisitScheduler({
 									setFecha(d);
 									setErrores((prev) => ({ ...prev, fecha: undefined }));
 								}}
-								disabled={{ before: HOY }}
+								disabled={{ before: hoy }}
 								autoFocus
 							/>
 						</PopoverContent>
@@ -297,6 +357,15 @@ export function VisitScheduler({
 						rows={3}
 					/>
 				</div>
+
+				{errorEnvio ? (
+					<p
+						role="alert"
+						className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs font-medium text-destructive"
+					>
+						{errorEnvio}
+					</p>
+				) : null}
 
 				<Button type="submit" variant="cta" size="lg" disabled={enviando}>
 					{enviando ? "Enviando…" : "Agendar visita"}

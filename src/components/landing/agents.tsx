@@ -1,20 +1,13 @@
 import { MapPin, Phone } from "lucide-react";
-import { toast } from "sonner";
 import { AnimatedTooltip } from "@/components/aceternity/animated-tooltip";
 import { SectionHeading } from "@/components/common/section-heading";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { vendedores } from "@/data/vendedores";
 import { iniciales } from "@/lib/format";
+import type { AgentePublico } from "@/types/domain";
 
-export function Agents() {
-	const activos = vendedores.filter((v) => v.estado === "Activo");
-
-	function contactar(nombre: string) {
-		toast.success("Solicitud enviada", {
-			description: `${nombre} te contactará al número registrado. (Acción simulada)`,
-		});
-	}
+export function Agents({ agentes }: { agentes: AgentePublico[] }) {
+	if (agentes.length === 0) return null;
 
 	return (
 		<section id="agentes" className="container-page py-16 lg:py-24">
@@ -25,11 +18,11 @@ export function Agents() {
 
 			<div className="mt-10 flex flex-wrap items-center gap-6">
 				<AnimatedTooltip
-					items={activos.map((v) => ({
-						id: v.id,
-						nombre: v.nombre,
-						cargo: v.cargo,
-						avatarUrl: v.avatarUrl,
+					items={agentes.map((agente) => ({
+						id: agente.id,
+						nombre: agente.nombre,
+						cargo: agente.cargo,
+						avatarUrl: agente.avatarUrl,
 					}))}
 				/>
 				<p className="text-sm text-muted-foreground">
@@ -38,25 +31,23 @@ export function Agents() {
 			</div>
 
 			<ul className="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-				{activos.map((vendedor) => (
+				{agentes.map((agente) => (
 					<li
-						key={vendedor.id}
+						key={agente.id}
 						className="flex flex-col rounded-xl border border-border bg-card p-6"
 					>
 						<div className="flex items-center gap-4">
 							<Avatar className="size-14 ring-2 ring-blue-soft">
-								<AvatarImage src={vendedor.avatarUrl} alt={vendedor.nombre} />
+								<AvatarImage src={agente.avatarUrl} alt={agente.nombre} />
 								<AvatarFallback className="bg-blue-soft text-primary">
-									{iniciales(vendedor.nombre)}
+									{iniciales(agente.nombre)}
 								</AvatarFallback>
 							</Avatar>
 							<div>
 								<p className="font-display text-base font-bold text-foreground">
-									{vendedor.nombre}
+									{agente.nombre}
 								</p>
-								<p className="text-sm text-muted-foreground">
-									{vendedor.cargo}
-								</p>
+								<p className="text-sm text-muted-foreground">{agente.cargo}</p>
 							</div>
 						</div>
 
@@ -67,7 +58,7 @@ export function Agents() {
 									aria-hidden="true"
 								/>
 								<dt className="sr-only">Zona</dt>
-								<dd>{vendedor.zona}</dd>
+								<dd>{agente.zona}</dd>
 							</div>
 							<div className="flex items-center gap-2">
 								<Phone
@@ -75,21 +66,27 @@ export function Agents() {
 									aria-hidden="true"
 								/>
 								<dt className="sr-only">Teléfono</dt>
-								<dd className="tabular">{vendedor.telefono}</dd>
+								<dd className="tabular">
+									{agente.telefono || "Contacto por la oficina"}
+								</dd>
 							</div>
 						</dl>
 
 						<div className="mt-6 flex items-center justify-between gap-3 border-t border-border pt-5">
 							<span className="text-xs text-muted-foreground">
-								{vendedor.alquileresCerrados} alquileres gestionados
+								{agente.alquileresGestionados} alquileres gestionados
 							</span>
-							<Button
-								variant="cta"
-								size="sm"
-								onClick={() => contactar(vendedor.nombre)}
-							>
-								Contactar agente
-							</Button>
+							{agente.telefono ? (
+								<Button asChild variant="cta" size="sm">
+									<a href={`tel:${agente.telefono.replace(/[^\d+]/g, "")}`}>
+										Contactar agente
+									</a>
+								</Button>
+							) : (
+								<Button asChild variant="outline" size="sm">
+									<a href="#contacto">Contactar oficina</a>
+								</Button>
+							)}
 						</div>
 					</li>
 				))}

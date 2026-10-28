@@ -1,6 +1,6 @@
 # Pruebas SQL — RE/MAX Potosí
 
-Estas pruebas validan las reglas críticas de las migraciones `0001–0006` sobre
+Estas pruebas validan las reglas críticas de las migraciones `0001–0010` sobre
 una base **con el seed demo**. No usan Docker ni el CLI de Supabase.
 
 | # | Verificación | Qué comprueba |
@@ -10,10 +10,14 @@ una base **con el seed demo**. No usan Docker ni el CLI de Supabase.
 | 3 | Mora | El job aplica 5 % tras 5 días de gracia, no cobra dentro de la gracia y no duplica avisos. |
 | 4 | Doble reserva de visita | `agendar_visita` rechaza otra visita en la misma franja de ±1 hora. |
 | 5 | Protección de rol | Un cliente no puede cambiarse el rol a vendedor. |
+| 6 | Visitas del cliente | Solo puede cancelar; no edita notas ni confirma. |
+| 7 | Visitas del vendedor | No reprograma ni reasigna una visita. |
+| 8 | Landing pública | `resumen_publico()` y `listar_agentes_publicos()` devuelven datos. |
+| 9 | Storage de fotos | La escritura se limita al agente del inmueble. |
 
 ## Requisitos
 
-1. Migraciones `0001–0006` aplicadas. `0007` es opcional: solo programa el cron.
+1. Migraciones `0001–0010` aplicadas. `0007` es opcional: solo programa el cron.
 2. Las tres cuentas demo creadas con `pnpm db:seed-users`.
 3. `supabase/seed.sql` ejecutado después de crear las cuentas.
 
@@ -36,11 +40,15 @@ psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 \
 Salida esperada (los `NOTICE` aparecen en stderr):
 
 ```text
-NOTICE:  OK 1/5 · cierre de alquiler
-NOTICE:  OK 2/5 · pago de cuota
-NOTICE:  OK 3/5 · mora y avisos
-NOTICE:  OK 4/5 · doble reserva de visita
-NOTICE:  OK 5/5 · protección de rol
+NOTICE:  OK 1/9 · cierre de alquiler
+NOTICE:  OK 2/9 · pago de cuota
+NOTICE:  OK 3/9 · mora y avisos
+NOTICE:  OK 4/9 · doble reserva de visita
+NOTICE:  OK 5/9 · protección de rol
+NOTICE:  OK 6/9 · visitas: cliente solo puede cancelar
+NOTICE:  OK 7/9 · visitas: vendedor no reprograma ni reasigna
+NOTICE:  OK 8/9 · landing pública con agregados reales
+NOTICE:  OK 9/9 · Storage de inmuebles limitado al agente
 ROLLBACK
 ```
 
@@ -69,8 +77,8 @@ sentencias por separado, usar `psql`. No se requieren comandos metacomando de
 
 - No sustituyen una prueba con JWT reales: simulan identidad con
   `request.jwt.claim.sub` y `request.jwt.claims`.
-- No prueban políticas de Storage con archivos reales; eso requiere un proyecto
-  Supabase y el cliente autenticado.
+- La prueba 9 valida el helper de autorización, no una subida real. Para el
+  flujo completo se requiere un proyecto Supabase y el cliente autenticado.
 - `0007_cron.sql` no se ejecutó en PGlite porque esa extensión no está incluida.
   En un Supabase real, verificar `cron.job` después de aplicarlo.
 

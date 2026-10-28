@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import {
 	Building2,
 	ExternalLink,
@@ -52,12 +52,18 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import { inmuebles as inmueblesIniciales } from "@/data/inmuebles";
-import type { Inmueble, InmuebleEstado } from "@/data/types";
+import { ESTADO_INMUEBLE_UI_A_DB } from "@/lib/admin";
 import { TIPOS_INMUEBLE } from "@/lib/catalog";
 import { formatBsMes, formatFecha } from "@/lib/format";
+import {
+	cambiarDestacadoInmueble,
+	cambiarEstadoInmueble,
+	listarInmueblesAdmin,
+} from "@/server/admin/inmuebles";
+import type { Inmueble, InmuebleEstado } from "@/types/models";
 
 export const Route = createFileRoute("/admin/inmuebles/")({
+	loader: () => listarInmueblesAdmin(),
 	head: () => ({
 		meta: [{ title: "Inmuebles · Administración · RE/MAX Potosí" }],
 	}),
@@ -89,7 +95,10 @@ const ESTADOS_INMUEBLE: InmuebleEstado[] = [
 ];
 
 function AdminInmuebles() {
-	const [lista, setLista] = useState<Inmueble[]>(inmueblesIniciales);
+	const inmueblesIniciales = Route.useLoaderData();
+	const router = useRouter();
+	const [lista, setLista] = useState(inmueblesIniciales);
+	const [guardando, setGuardando] = useState(false);
 	const [q, setQ] = useState("");
 	const [tipo, setTipo] = useState("todos");
 	const [zonas, setZonas] = useState<string[]>([]);
@@ -123,32 +132,86 @@ function AdminInmuebles() {
 		setEstado("todos");
 	}
 
-	function aplicarEstado(inmueble: Inmueble, nuevo: InmuebleEstado) {
-		setLista((prev) =>
-			prev.map((i) => (i.id === inmueble.id ? { ...i, estado: nuevo } : i)),
-		);
-		toast.success("Estado actualizado", {
-			description: `${inmueble.codigo} ahora está «${nuevo}». (Acción simulada)`,
-		});
+	async function aplicarEstado(inmueble: Inmueble, nuevo: InmuebleEstado) {
+		if (guardando) return;
+		setGuardando(true);
+		try {
+			const resultado = await cambiarEstadoInmueble({
+				data: {
+					id: inmueble.id,
+					estado: ESTADO_INMUEBLE_UI_A_DB[nuevo],
+				},
+			});
+
+			if (!resultado.ok) {
+				toast.error("No se pudo actualizar el estado", {
+					description: resultado.error,
+				});
+				return;
+			}
+
+			setLista((prev) =>
+				prev.map((i) => (i.id === inmueble.id ? { ...i, estado: nuevo } : i)),
+			);
+			toast.success("Estado actualizado", {
+				description: `${inmueble.codigo} ahora está «${nuevo}».`,
+			});
+			await router.invalidate();
+		} catch (error) {
+			toast.error("No se pudo actualizar el estado", {
+				description:
+					error instanceof Error ? error.message : "Inténtalo de nuevo.",
+			});
+		} finally {
+			setGuardando(false);
+		}
 	}
 
 	function cambiarEstado(inmueble: Inmueble, nuevo: InmuebleEstado) {
-		if (nuevo === inmueble.estado) return;
+		if (nuevo === inmueble.estado || guardando) return;
 		if (nuevo === "Inactivo") {
 			setBaja(inmueble);
 			return;
 		}
-		aplicarEstado(inmueble, nuevo);
+		void aplicarEstado(inmueble, nuevo);
 	}
 
-	function alternarDestacado(inmueble: Inmueble) {
+	async function alternarDestacado(inmueble: Inmueble) {
+		if (guardando) return;
 		const nuevo = !inmueble.destacado;
-		setLista((prev) =>
-			prev.map((i) => (i.id === inmueble.id ? { ...i, destacado: nuevo } : i)),
-		);
-		toast.success(nuevo ? "Marcado como destacado" : "Quitado de destacados", {
-			description: `${inmueble.codigo} · ${inmueble.titulo}`,
-		});
+		setGuardando(true);
+		try {
+			const resultado = await cambiarDestacadoInmueble({
+				data: { id: inmueble.id, destacado: nuevo },
+			});
+
+			if (!resultado.ok) {
+				toast.error("No se pudo actualizar el destacado", {
+					description: resultado.error,
+				});
+				return;
+			}
+
+			setLista((prev) =>
+				prev.map((i) =>
+					i.id === inmueble.id ? { ...i, destacado: nuevo } : i,
+				),
+			);
+			toast.success(
+				nuevo ? "Marcado como destacado" : "Quitado de destacados",
+				{
+					description: `${inmueble.codigo} · ${inmueble.titulo}`,
+				},
+			);
+			await router.invalidate();
+		} catch (error) {
+			toast.error("No se pudo actualizar el destacado", {
+				description:
+					error instanceof Error ? error.message : "Inténtalo de nuevo.",
+			});
+		} finally {
+			setGuardando(false);
+		}
 	}
 
 	return (
@@ -389,8 +452,10 @@ function AdminInmuebles() {
 					<AlertDialogFooter>
 						<AlertDialogCancel>Cancelar</AlertDialogCancel>
 						<AlertDialogAction
-							onClick={() => {
-								if (baja) aplicarEstado(baja, "Inactivo");
+							disabled={guardando}
+							onClick={async () => {
+								if (!baja) return;
+								await aplicarEstado(baja, "Inactivo");
 								setBaja(null);
 							}}
 						>

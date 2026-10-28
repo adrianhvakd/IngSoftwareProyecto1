@@ -1,20 +1,24 @@
 # Progreso de la migración a Supabase
 
-Última actualización: 2026-10-23 (entregable 7 y pruebas SQL versionadas).
+Última actualización: 2026-10-28 (fase 5: pantallas finales, RLS y despliegue).
 
 > Instrucción para la próxima sesión: actualizar esta checklist al terminar cada
-> bloque de trabajo. Los entregables 1–7 están completos a nivel de código,
-> documentación y verificación local. Falta repetir la verificación en un
-> proyecto Supabase real con JWT reales.
+> bloque de trabajo. Los entregables 1–7 están completos a nivel de código y
+> documentación. Todas las pantallas consumen Supabase; no quedan mocks,
+> datos de ejemplo ni acciones simuladas.
 
 ## Contexto rápido
 
-- El frontend actual sigue usando mocks en `src/data/`. **No se ha conectado
-  ninguna pantalla a Supabase todavía.**
+- Inicio, catálogo, detalle, login/registro, agendador, panel administrador,
+  alquileres, cierre, pagos, comisiones, `/vendedor`, `/vendedor/visitas`,
+  `/cliente` y `/cliente/mi-alquiler` usan Supabase. La landing muestra agentes
+  y métricas reales. `src/data/` fue eliminado y el modelo vive en
+  `src/types/models.ts`.
 - La fuente de verdad del esquema son las migraciones de
   `supabase/migrations/`.
 - La verificación local se hace con PGlite porque en este entorno no hay
-  Docker, CLI de Supabase ni `psql`. Ver nota al final.
+  Docker, CLI de Supabase ni `psql`. Ver nota al final. Las fases 2 y 3 también
+  se probaron contra el proyecto Supabase de desarrollo con sesiones reales.
 - `docs/PROGRESS.md` (este archivo) es el tablero de avance. La documentación
   larga vive en los ocho archivos de `docs/` y en `AGENTS.md`.
 
@@ -132,7 +136,7 @@
 - [x] `src/server/supabase-admin.ts` (service role, solo servidor).
 - [x] `src/types/database.types.ts`: tipos manuales con aviso para regenerar con
       `pnpm db:types`.
-- [x] `src/types/domain.ts`: reexporta el modelo de `src/data/types.ts` y añade
+- [x] `src/types/domain.ts`: reexporta el modelo de `src/types/models.ts` y añade
       tipos de filas/vistas de la base.
 - [x] `.env.example` con `VITE_SUPABASE_URL`,
       `VITE_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY` y la
@@ -141,7 +145,8 @@
       `.dev.vars` y `.dev.vars.*`.
 - [x] Scripts `db:types`, `db:bundle` (genera `supabase/full_setup.sql`) y
       `db:seed-users`.
-- [x] Ninguna pantalla fue conectada a Supabase; los mocks siguen intactos.
+- [x] Base del cliente lista; la conexión de pantallas se hizo en las fases
+      posteriores (entregable 8).
 
 ## Entregable 7 — Documentación
 
@@ -153,7 +158,7 @@
       Storage, cron y formas de aplicar.
 - [x] `docs/DESIGN_SYSTEM.md`: tokens, tipografía, componentes, pickers y
       patrones UI.
-- [x] `docs/ROUTES.md`: 22 pantallas por rol y estado real.
+- [x] `docs/ROUTES.md`: 23 pantallas por rol y estado real.
 - [x] `docs/MIGRATION_PLAN.md`: fases auth → catálogo → visita → admin →
       visitas → cierre → pagos → cliente, con server functions faltantes.
 - [x] `docs/DEPLOYMENT.md`: Cloudflare Workers, variables, secretos y
@@ -163,10 +168,44 @@
       transaccionales y cómo ejecutarlas.
 - [x] `docs/PROGRESS.md` actualizado.
 
+## Entregable 8 — Conexión de pantallas a Supabase
+
+- [x] **Autenticación y sesión:** `/ingresar`, `/registro`, logout, guards por
+      rol, redirección por rol y cambio obligatorio de contraseña.
+- [x] **Sitio público:** inicio, `/propiedades` con filtros/orden/paginación en
+      servidor y `/propiedades/$id` desde `v_inmuebles_catalogo`.
+- [x] **Agendador de visitas:** RPC `agendar_visita` con validación de contacto,
+      offset `-04:00` y errores mapeados.
+- [x] **Panel administrador (fase 3):**
+  - Dashboard con `v_dashboard_admin`, visitas, mora, ingresos y comisiones.
+  - Usuarios con cambio de rol/estado y protecciones de último admin.
+  - Vendedores con ascenso por RPC, alta con contraseña temporal, edición y
+    baja lógica.
+  - Proveedores con alta/edición/eliminación y cartera real.
+  - Inmuebles con alta/edición, fotos en Storage y cambio de estado por RPC.
+  - Visitas con asignación de vendedor y cambio de estado.
+- [x] **Admin: alquileres y cobros (fase 4):** `/admin/alquileres` desde
+      `v_alquileres_detalle`, `Sheet` de detalle con URLs firmadas y cobro en
+      efectivo por `registrar_pago_cuota`.
+- [x] **Cierre de alquiler (fase 4):** wizard de vendedor y admin con opciones
+      reales, alta de cliente, UUID previo, subida privada de contrato y
+      comprobante, RPC `registrar_alquiler` y limpieza ante error.
+- [x] **Pagos del vendedor y comisiones (fase 4):** `/vendedor/registrar-pago`
+      y `/vendedor/comisiones`.
+- [x] **Mi alquiler del cliente (fase 4):** contratos múltiples, cuota actual,
+      historial, URLs firmadas y reporte de pago QR con
+      `reportarPagoCliente`.
+- [x] Resumen y visitas del vendedor (`/vendedor`, `/vendedor/visitas`).
+- [x] Inicio del cliente (`/cliente`, mis visitas).
+- [ ] Recorrido completo de las tres cuentas demo creando alquiler, pago y
+      comprobantes reales de punta a punta.
+- [x] “Olvidé mi contraseña” convertido en contacto real por correo; ya no hay
+      acción simulada.
+
 ## Decisiones tomadas en esta sesión
 
 1. **Estado de alquiler `suspendido`:** el prompt hablaba de
-   `vigente|finalizado|cancelado`, pero la UI (`src/data/types.ts`) usa
+   `vigente|finalizado|cancelado`, pero la UI (`src/types/models.ts`) usa
    `Suspendido`. Se agregó `suspendido` al enum para no romper el frontend. Un
    alquiler suspendido **no** libera el inmueble; solo `finalizado`/`cancelado`
    lo hacen.
@@ -245,6 +284,20 @@
 21. **Tipos manuales:** `database.types.ts` se escribió a mano porque no hay
     Supabase CLI en este entorno. Incluye un comentario para regenerarlo con
     `pnpm db:types` cuando el proyecto esté enlazado.
+22. **Alta de cliente desde el cierre:** el wizard puede crear la cuenta con
+    `crearUsuarioCliente` (server function, Admin API) y una contraseña
+    generada. Si el cierre falla después, la cuenta permanece y el mensaje lo
+    advierte; se evita crear el alquiler sin cliente.
+23. **Subida privada al finalizar:** contrato y comprobante se suben recién al
+    confirmar el wizard, usando el UUID generado en el navegador. Si el RPC
+    falla, `eliminarArchivosAlquiler` limpia ambos objetos. La descarga siempre
+    usa URLs firmadas, no rutas públicas.
+24. **Pago reportado por el cliente:** el cliente paga por QR y
+    `reportarPagoCliente` registra el pago con `validado = false`; no sube
+    comprobante. La UI avisa que queda pendiente de validación.
+25. **Fechas deterministas:** `formatFecha` fija `America/La_Paz` para evitar
+    diferencias SSR/cliente. La prueba headless detectó un desfase de un día en
+    `fecha_fin` que se corrigió con este cambio.
 
 ## Verificación realizada (2026-10-20)
 
@@ -274,8 +327,8 @@
    `supabase db reset` si hay CLI).
 3. Ejecutar `pnpm db:seed-users`. Si `SUPABASE_DB_URL` está definida, el script
    ejecuta también `supabase/seed.sql`; si no, pegarlo a mano en el editor SQL.
-4. Iniciar la app con `pnpm dev`. Las pantallas siguen usando mocks hasta el
-   siguiente bloque de trabajo.
+4. Iniciar la app con `pnpm dev`. Todas las pantallas consumen Supabase; la
+   landing y los paneles muestran datos reales. No hay mocks de respaldo.
 
 ## Nota sobre herramientas locales
 
@@ -308,3 +361,87 @@ repetir los tests.
 - [x] Las pruebas dejan la base intacta (rollback; conteos iguales al seed).
 - [ ] Ejecutar `full_setup.sql` completo, incluido `0007`, en un Supabase real.
 - [ ] Repetir las pruebas con JWT reales y archivos reales en Storage.
+
+## Verificación de la fase 4 (2026-10-28)
+
+- [x] `pnpm tsc --noEmit` → 0 errores.
+- [x] `pnpm check` → Biome limpio.
+- [x] `pnpm build` → cliente y SSR; solo `SOURCEMAP_BROKEN` preexistente.
+- [x] `pnpm db:seed-users` contra el proyecto de desarrollo: tres cuentas demo y
+      seed recargado.
+- [x] `0008_cambio_password_inicial.sql` aplicada y verificada en el proyecto de
+      desarrollo (`marcar_password_actualizada()` existe).
+- [x] Recorrido headless con Chromium y sesiones reales:
+  - Admin: `/admin/alquileres` con contratos/cuotas, `Sheet` de detalle y acción
+    de cobro; `/admin/alquileres/nuevo`; `/admin`.
+  - Vendedor: `/vendedor/registrar-pago` con cuota actual seleccionada y total
+    correcto; `/vendedor/comisiones`; `/vendedor/cierre-alquiler`.
+  - Cliente: `/cliente/mi-alquiler`, historial, comprobante y apertura/cierre
+    del diálogo de pago QR.
+- [x] Sin errores de consola ni avisos de hidratación tras fijar
+      `America/La_Paz` en `formatFecha`.
+- [ ] Crear un alquiler y subir contrato/comprobante reales de punta a punta
+      (no se dejaron datos residuales en esta sesión).
+- [ ] Descargar contrato/comprobante firmados con objetos reales en Storage.
+- [ ] Repetir el flujo completo de las tres cuentas en una sola sesión.
+
+## Fase 5 — pantallas finales, RLS y despliegue (2026-10-28)
+
+- [x] `src/data/` eliminado. Los tipos compartidos se movieron a
+      `src/types/models.ts` y los DTO por módulo a `src/types/*.ts`.
+- [x] `/vendedor`: visitas, contratos, comisiones y cobros del mes desde
+      `listarPanelVendedor`.
+- [x] `/vendedor/visitas`: agenda real desde `listarVisitasVendedor` y
+      confirmación/cancelación vía `cambiarEstadoVisitaActor`.
+- [x] `/cliente`: mis visitas desde `listarVisitasCliente` y cancelación real.
+- [x] Topbar: notificaciones reales con carga, estado vacío y “marcar leídas”.
+- [x] `/admin/usuarios`: la acción simulada se reemplazó por un enlace real a
+      alta de vendedor.
+- [x] Landing: agentes y métricas reales con `listar_agentes_publicos()` y
+      `resumen_publico()`; se eliminaron testimonios ficticios y enlaces
+      simulados. La información institucional vive en `src/lib/site.ts`.
+- [x] `0009_fase5_seguridad_y_publico.sql`: trigger de visitas, RPC de agentes y
+      resumen público.
+- [x] `0010_storage_inmuebles_por_agente.sql`: escritura de fotos limitada al
+      admin o al agente del inmueble.
+- [x] `0011` no existe; `full_setup.sql` se regeneró con 10 migraciones.
+- [x] 0009 y 0010 aplicadas al proyecto Supabase de desarrollo y caché de
+      PostgREST recargada.
+- [x] Fechas agrupadas por día con `fechaDiaLaPaz` para eliminar el desfase de
+      hidratación detectado en la agenda del vendedor.
+- [x] Build cliente sin `SUPABASE_SERVICE_ROLE_KEY` ni claves secretas. La
+      publishable key sí está en el bundle, como corresponde. El único archivo
+      con secretos es `dist/server/.dev.vars`, local, ignorado por git y para
+      preview; no se despliega.
+- [x] Smoke test con Chromium headless de las 7 pantallas del admin, 5 del
+      vendedor, 2 del cliente y las 3 públicas: cero errores de consola.
+      `/admin` y `/vendedor` redirigen al panel correcto según el rol; sin sesión
+      devuelven 307 a `/ingresar`.
+- [x] Auditoría RLS con clientes reales de Supabase: cliente, vendedor y admin
+      ven solo lo permitido. Bloqueados con `42501` los cambios de notas,
+      reprogramación, reasignación, estado no permitido y cambio de rol. Storage
+      bloquea carpetas ajenas y permite la del agente; archivos de prueba
+      eliminados.
+- [x] `supabase/tests/verificaciones.sql` ejecutado contra la base de
+      desarrollo: 9/9 verificaciones y `ROLLBACK` (sin datos residuales).
+- [ ] Configurar variables y secretos del Worker y ejecutar `pnpm deploy`.
+- [ ] Probar un cierre de alquiler real con subida de contrato/comprobante y
+      descarga firmada (no se hizo para evitar datos residuales).
+
+## Decisiones de la fase 5
+
+26. **Sin mocks:** se eliminó `src/data`; no se mantiene una capa de respaldo
+    porque ocultaría fallos de Supabase. Los loaders devuelven estados vacíos o
+    el error boundary global.
+27. **Notificaciones del topbar:** se cargan en el cliente con una server
+    function, muestran “Cargando…”, estado vacío y permiten marcar todas como
+    leídas. No hay contadores inventados.
+28. **Landing:** los agentes y las métricas salen de funciones `security definer`
+    que devuelven solo datos profesionales agregados. Los testimonios y los
+    enlaces de contacto simulados se retiraron.
+29. **Visitas:** el trigger 0009 es la última barrera; la server function vuelve
+    a validar rol y transición antes del UPDATE. Un cliente solo cancela visitas
+    pendientes propias; un vendedor solo confirma/cancela las asignadas.
+30. **Storage de inmuebles:** la escritura se restringe al agente dueño de la
+    carpeta. El admin conserva acceso total. La lectura sigue pública por ser
+    catálogo.

@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
 import {
 	HandCoins,
 	MapPin,
@@ -58,12 +58,18 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { Vendedor } from "@/data/types";
-import { usuarios } from "@/data/usuarios";
-import { vendedores as vendedoresIniciales } from "@/data/vendedores";
 import { formatBs, iniciales } from "@/lib/format";
+import {
+	actualizarVendedor,
+	darBajaVendedor,
+	listarVendedoresAdmin,
+	promoverVendedor,
+} from "@/server/admin/vendedores";
+import { crearUsuarioVendedor } from "@/server/usuarios";
+import type { Vendedor } from "@/types/models";
 
 export const Route = createFileRoute("/admin/vendedores")({
+	loader: () => listarVendedoresAdmin(),
 	head: () => ({
 		meta: [{ title: "Vendedores · Administración · RE/MAX Potosí" }],
 	}),
@@ -91,7 +97,10 @@ const FORM_VACIO: FormularioVendedor = {
 };
 
 function AdminVendedores() {
-	const [lista, setLista] = useState(vendedoresIniciales);
+	const datosIniciales = Route.useLoaderData();
+	const router = useRouter();
+	const [lista, setLista] = useState(datosIniciales.vendedores);
+	const [guardando, setGuardando] = useState(false);
 	const [sheetAbierto, setSheetAbierto] = useState(false);
 	const [editando, setEditando] = useState<Vendedor | null>(null);
 	const [form, setForm] = useState<FormularioVendedor>(FORM_VACIO);
@@ -115,10 +124,8 @@ function AdminVendedores() {
 			: 0;
 	const totalCerrados = lista.reduce((acc, v) => acc + v.alquileresCerrados, 0);
 
-	const candidatos = usuarios.filter(
-		(u) =>
-			u.rol !== "Administrador" &&
-			!vendedoresIniciales.some((v) => v.email === u.email),
+	const candidatos = datosIniciales.candidatos.filter(
+		(u) => !lista.some((v) => v.id === u.id),
 	);
 
 	function abrirNuevo() {
@@ -148,7 +155,7 @@ function AdminVendedores() {
 
 	function elegirUsuario(id: string | null) {
 		setUsuarioId(id);
-		const u = usuarios.find((x) => x.id === id);
+		const u = candidatos.find((x) => x.id === id);
 		if (u) {
 			setForm((f) => ({
 				...f,
@@ -160,7 +167,22 @@ function AdminVendedores() {
 		}
 	}
 
-	function guardar() {
+	function partirNombre(nombre: string): {
+		nombres: string;
+		apellidos: string;
+	} {
+		const partes = nombre.trim().split(/\s+/).filter(Boolean);
+		if (partes.length <= 1) {
+			return { nombres: partes[0] ?? "", apellidos: "" };
+		}
+		return {
+			nombres: partes[0],
+			apellidos: partes.slice(1).join(" "),
+		};
+	}
+
+	async function guardar() {
+		if (guardando) return;
 		if (!form.nombre.trim() || !form.email.trim()) {
 			toast.error("Completa los campos obligatorios", {
 				description: "El nombre y el correo son necesarios.",
@@ -175,67 +197,179 @@ function AdminVendedores() {
 			return;
 		}
 
-		if (editando) {
-			setLista((prev) =>
-				prev.map((v) =>
-					v.id === editando.id
-						? {
-								...v,
-								nombre: form.nombre,
-								email: form.email,
-								telefono: form.telefono,
-								zona: form.zona || v.zona,
-								cargo: form.cargo,
-								comisionFija: comision,
-							}
-						: v,
-				),
-			);
-			toast.success("Vendedor actualizado", {
-				description: `${form.nombre} guardado correctamente. (Acción simulada)`,
+		const { nombres, apellidos } = partirNombre(form.nombre);
+		if (!apellidos && !editando) {
+			toast.error("Nombre incompleto", {
+				description: "Ingresa nombre y apellido del vendedor.",
 			});
-			setSheetAbierto(false);
 			return;
 		}
 
-		const nuevo: Vendedor = {
-			id: `vnd-${String(lista.length + 1).padStart(3, "0")}`,
-			nombre: form.nombre,
-			email: form.email,
-			telefono: form.telefono,
-			zona: form.zona || "Sin asignar",
-			cargo: form.cargo || "Agente comercial",
-			comisionFija: comision,
-			alquileresCerrados: 0,
-			estado: "Activo",
-			avatarUrl: form.avatarUrl,
-			ingresoEl: "2026-10-19",
-		};
-		setLista((prev) => [...prev, nuevo]);
+		setGuardando(true);
+		try {
+			if (editando) {
+				const resultado = await actualizarVendedor({
+					data: {
+						perfilId: editando.id,
+						nombres,
+						apellidos: apellidos || editando.nombre,
+						correo: form.email.trim(),
+						telefono: form.telefono.trim(),
+						cargo: form.cargo.trim(),
+						comision,
+						zona: form.zona || undefined,
+					},
+				});
 
-		if (modo === "nuevo") {
-			setCreado({ usuario: form.email, password });
+				if (!resultado.ok) {
+					toast.error("No se pudo actualizar el vendedor", {
+						description: resultado.error,
+					});
+					return;
+				}
+
+				setLista((prev) =>
+					prev.map((v) =>
+						v.id === editando.id
+							? {
+									...v,
+									nombre: form.nombre,
+									email: form.email.trim(),
+									telefono: form.telefono.trim(),
+									zona: form.zona || v.zona,
+									cargo: form.cargo || "Agente comercial",
+									comisionFija: comision,
+								}
+							: v,
+					),
+				);
+				toast.success("Vendedor actualizado", {
+					description: `${form.nombre} guardado correctamente.`,
+				});
+				setSheetAbierto(false);
+				await router.invalidate();
+				return;
+			}
+
+			if (modo === "existente") {
+				if (!usuarioId) {
+					toast.error("Selecciona un usuario", {
+						description: "Elige la cuenta que pasará a vendedor.",
+					});
+					return;
+				}
+
+				const resultado = await promoverVendedor({
+					data: {
+						perfilId: usuarioId,
+						comision,
+						cargo: form.cargo.trim(),
+						zona: form.zona || undefined,
+					},
+				});
+
+				if (!resultado.ok) {
+					toast.error("No se pudo ascender al vendedor", {
+						description: resultado.error,
+					});
+					return;
+				}
+
+				const nuevo: Vendedor = {
+					id: usuarioId,
+					nombre: form.nombre,
+					email: form.email,
+					telefono: form.telefono,
+					zona: form.zona || "Sin asignar",
+					cargo: form.cargo || "Agente comercial",
+					comisionFija: comision,
+					alquileresCerrados: 0,
+					estado: "Activo",
+					avatarUrl: form.avatarUrl,
+					ingresoEl: new Date().toISOString(),
+				};
+				setLista((prev) => [...prev, nuevo]);
+				toast.success("Vendedor ascendido", {
+					description: `${form.nombre} pasó a formar parte del equipo comercial.`,
+				});
+				setSheetAbierto(false);
+				await router.invalidate();
+				return;
+			}
+
+			const resultado = await crearUsuarioVendedor({
+				data: {
+					nombres,
+					apellidos,
+					correo: form.email.trim(),
+					telefono: form.telefono.trim() || undefined,
+					comisionFija: comision,
+					cargo: form.cargo.trim() || undefined,
+					zonaNombre: form.zona || undefined,
+					password: password.trim() ? password : undefined,
+				},
+			});
+
+			const nuevo: Vendedor = {
+				id: resultado.id,
+				nombre: form.nombre,
+				email: resultado.correo,
+				telefono: form.telefono,
+				zona: form.zona || "Sin asignar",
+				cargo: form.cargo || "Agente comercial",
+				comisionFija: comision,
+				alquileresCerrados: 0,
+				estado: "Activo",
+				avatarUrl: form.avatarUrl,
+				ingresoEl: new Date().toISOString(),
+			};
+			setLista((prev) => [...prev, nuevo]);
+			setCreado({ usuario: resultado.correo, password: resultado.password });
 			toast.success("Vendedor registrado", {
 				description: `${form.nombre} se sumó al equipo. Entrega sus credenciales.`,
 			});
-			return;
+			await router.invalidate();
+		} catch (error) {
+			toast.error("No se pudo guardar el vendedor", {
+				description:
+					error instanceof Error ? error.message : "Inténtalo de nuevo.",
+			});
+		} finally {
+			setGuardando(false);
 		}
-
-		toast.success("Vendedor ascendido", {
-			description: `${form.nombre} pasó a formar parte del equipo comercial. (Acción simulada)`,
-		});
-		setSheetAbierto(false);
 	}
 
-	function confirmarBaja() {
-		if (!baja) return;
-		setLista((prev) =>
-			prev.map((v) => (v.id === baja.id ? { ...v, estado: "Inactivo" } : v)),
-		);
-		toast.info("Vendedor dado de baja", {
-			description: `${baja.nombre} ya no recibirá nuevas visitas. (Acción simulada)`,
-		});
-		setBaja(null);
+	async function confirmarBaja() {
+		if (!baja || guardando) return;
+		setGuardando(true);
+		try {
+			const resultado = await darBajaVendedor({
+				data: { perfilId: baja.id },
+			});
+
+			if (!resultado.ok) {
+				toast.error("No se pudo dar de baja al vendedor", {
+					description: resultado.error,
+				});
+				return;
+			}
+
+			setLista((prev) =>
+				prev.map((v) => (v.id === baja.id ? { ...v, estado: "Inactivo" } : v)),
+			);
+			toast.info("Vendedor dado de baja", {
+				description: `${baja.nombre} ya no recibirá nuevas visitas.`,
+			});
+			setBaja(null);
+			await router.invalidate();
+		} catch (error) {
+			toast.error("No se pudo dar de baja al vendedor", {
+				description:
+					error instanceof Error ? error.message : "Inténtalo de nuevo.",
+			});
+		} finally {
+			setGuardando(false);
+		}
 	}
 
 	return (
@@ -566,7 +700,11 @@ function AdminVendedores() {
 								>
 									Cancelar
 								</Button>
-								<Button variant="default" onClick={guardar}>
+								<Button
+									variant="default"
+									disabled={guardando}
+									onClick={guardar}
+								>
 									{editando
 										? "Guardar cambios"
 										: modo === "existente"
@@ -595,6 +733,7 @@ function AdminVendedores() {
 					<AlertDialogFooter>
 						<AlertDialogCancel>Cancelar</AlertDialogCancel>
 						<AlertDialogAction
+							disabled={guardando}
 							onClick={confirmarBaja}
 							className="bg-destructive text-white hover:bg-destructive/90"
 						>

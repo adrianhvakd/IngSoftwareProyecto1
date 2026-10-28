@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import {
 	Building2,
 	ExternalLink,
@@ -64,12 +64,17 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import { getInmueblesDeProveedor, getProveedoresConConteo } from "@/data";
-import { proveedores as proveedoresIniciales } from "@/data/proveedores";
-import type { Proveedor } from "@/data/types";
 import { formatBsMes, formatFecha } from "@/lib/format";
+import {
+	actualizarProveedor,
+	crearProveedor,
+	eliminarProveedor,
+	listarProveedoresAdmin,
+} from "@/server/admin/proveedores";
+import type { ProveedorAdmin } from "@/types/admin";
 
 export const Route = createFileRoute("/admin/proveedores")({
+	loader: () => listarProveedoresAdmin(),
 	head: () => ({
 		meta: [{ title: "Proveedores · Administración · RE/MAX Potosí" }],
 	}),
@@ -99,21 +104,23 @@ const FORM_VACIO: FormularioProveedor = {
 };
 
 function AdminProveedores() {
-	const [lista, setLista] = useState<Proveedor[]>(proveedoresIniciales);
+	const proveedoresIniciales = Route.useLoaderData();
+	const router = useRouter();
+	const [lista, setLista] = useState<ProveedorAdmin[]>(proveedoresIniciales);
 	const [cargando] = useState(false);
+	const [guardando, setGuardando] = useState(false);
 	const [q, setQ] = useState("");
 	const [tipo, setTipo] = useState("todos");
 	const [estado, setEstado] = useState("todos");
 	const [pagina, setPagina] = useState(1);
 
 	const [sheetAbierto, setSheetAbierto] = useState(false);
-	const [editando, setEditando] = useState<Proveedor | null>(null);
+	const [editando, setEditando] = useState<ProveedorAdmin | null>(null);
 	const [form, setForm] = useState<FormularioProveedor>(FORM_VACIO);
-	const [eliminar, setEliminar] = useState<Proveedor | null>(null);
-	const [detalle, setDetalle] = useState<Proveedor | null>(null);
+	const [eliminar, setEliminar] = useState<ProveedorAdmin | null>(null);
+	const [detalle, setDetalle] = useState<ProveedorAdmin | null>(null);
 
-	const conteo = useMemo(() => getProveedoresConConteo(), []);
-	const totalInmuebles = conteo.reduce((acc, p) => acc + p.inmueblesCount, 0);
+	const totalInmuebles = lista.reduce((acc, p) => acc + p.inmueblesCount, 0);
 	const empresas = lista.filter((p) => p.tipo === "Empresa").length;
 
 	const filtrados = useMemo(() => {
@@ -148,7 +155,7 @@ function AdminProveedores() {
 		setSheetAbierto(true);
 	}
 
-	function abrirEdicion(p: Proveedor) {
+	function abrirEdicion(p: ProveedorAdmin) {
 		setEditando(p);
 		setForm({
 			nombre: p.nombre,
@@ -156,66 +163,118 @@ function AdminProveedores() {
 			telefono: p.telefono,
 			email: p.email ?? "",
 			ciudad: p.ciudad,
-			zonaPrincipal: p.zonaPrincipal,
+			zonaPrincipal: p.zonaPrincipal === "Sin asignar" ? "" : p.zonaPrincipal,
 			estado: p.estado,
 		});
 		setSheetAbierto(true);
 	}
 
-	function guardar() {
+	async function guardar() {
+		if (guardando) return;
 		if (!form.nombre.trim() || !form.zonaPrincipal) {
 			toast.error("Completa los campos obligatorios", {
 				description: "El nombre y la zona principal son necesarios.",
 			});
 			return;
 		}
-		if (editando) {
-			setLista((prev) =>
-				prev.map((p) =>
-					p.id === editando.id
-						? {
-								...p,
-								nombre: form.nombre,
-								tipo: form.tipo,
-								telefono: form.telefono,
-								email: form.email || undefined,
-								ciudad: form.ciudad,
-								zonaPrincipal: form.zonaPrincipal,
-								estado: form.estado,
-							}
-						: p,
-				),
-			);
-			toast.success("Proveedor actualizado", {
-				description: `${form.nombre} guardado correctamente. (Acción simulada)`,
-			});
-		} else {
-			const nuevo: Proveedor = {
-				id: `prv-${String(lista.length + 1).padStart(3, "0")}`,
-				nombre: form.nombre,
+
+		setGuardando(true);
+		try {
+			const datos = {
+				nombre: form.nombre.trim(),
 				tipo: form.tipo,
-				telefono: form.telefono,
-				email: form.email || undefined,
-				ciudad: form.ciudad || "Potosí",
+				telefono: form.telefono.trim() || undefined,
+				email: form.email.trim() || undefined,
+				ciudad: form.ciudad.trim() || "Potosí",
 				zonaPrincipal: form.zonaPrincipal,
 				estado: form.estado,
-				desde: "2026-10-19",
 			};
-			setLista((prev) => [nuevo, ...prev]);
-			toast.success("Proveedor registrado", {
-				description: `${form.nombre} se sumó a la cartera. (Acción simulada)`,
+
+			const resultado = editando
+				? await actualizarProveedor({
+						data: { ...datos, id: editando.id },
+					})
+				: await crearProveedor({ data: datos });
+
+			if (!resultado.ok) {
+				toast.error("No se pudo guardar el proveedor", {
+					description: resultado.error,
+				});
+				return;
+			}
+
+			const guardado = resultado.proveedor;
+			const conCartera: ProveedorAdmin = {
+				...guardado,
+				inmueblesCount: editando?.inmueblesCount ?? 0,
+				inmuebles: editando?.inmuebles ?? [],
+			};
+
+			setLista((prev) =>
+				editando
+					? prev.map((p) => (p.id === editando.id ? conCartera : p))
+					: [conCartera, ...prev],
+			);
+			toast.success(
+				editando ? "Proveedor actualizado" : "Proveedor registrado",
+				{
+					description: editando
+						? `${guardado.nombre} guardado correctamente.`
+						: `${guardado.nombre} se sumó a la cartera.`,
+				},
+			);
+			setSheetAbierto(false);
+			await router.invalidate();
+		} catch (error) {
+			toast.error("No se pudo guardar el proveedor", {
+				description:
+					error instanceof Error ? error.message : "Inténtalo de nuevo.",
 			});
+		} finally {
+			setGuardando(false);
 		}
-		setSheetAbierto(false);
 	}
 
-	function confirmarEliminar() {
-		if (!eliminar) return;
-		setLista((prev) => prev.filter((p) => p.id !== eliminar.id));
-		toast.info("Proveedor eliminado", {
-			description: `${eliminar.nombre} ya no aparecerá en la cartera. (Acción simulada)`,
-		});
-		setEliminar(null);
+	async function confirmarEliminar() {
+		if (!eliminar || guardando) return;
+		setGuardando(true);
+		try {
+			const resultado = await eliminarProveedor({
+				data: { id: eliminar.id },
+			});
+
+			if (!resultado.ok) {
+				toast.error("No se pudo eliminar el proveedor", {
+					description: resultado.error,
+				});
+				return;
+			}
+
+			if (resultado.desactivado) {
+				setLista((prev) =>
+					prev.map((p) =>
+						p.id === eliminar.id ? { ...p, estado: "Inactivo" } : p,
+					),
+				);
+				toast.info("Proveedor desactivado", {
+					description: `${eliminar.nombre} conserva sus inmuebles y ya no aparecerá como activo.`,
+				});
+			} else {
+				setLista((prev) => prev.filter((p) => p.id !== eliminar.id));
+				toast.info("Proveedor eliminado", {
+					description: `${eliminar.nombre} ya no aparecerá en la cartera.`,
+				});
+			}
+			setEliminar(null);
+			await router.invalidate();
+		} catch (error) {
+			toast.error("No se pudo eliminar el proveedor", {
+				description:
+					error instanceof Error ? error.message : "Inténtalo de nuevo.",
+			});
+		} finally {
+			setGuardando(false);
+		}
 	}
 
 	return (
@@ -371,8 +430,7 @@ function AdminProveedores() {
 							</TableHeader>
 							<TableBody>
 								{visibles.map((p) => {
-									const n =
-										conteo.find((c) => c.id === p.id)?.inmueblesCount ?? 0;
+									const n = p.inmueblesCount;
 									return (
 										<TableRow key={p.id}>
 											<TableCell className="pl-5">
@@ -638,7 +696,7 @@ function AdminProveedores() {
 						<Button variant="outline" onClick={() => setSheetAbierto(false)}>
 							Cancelar
 						</Button>
-						<Button variant="default" onClick={guardar}>
+						<Button variant="default" disabled={guardando} onClick={guardar}>
 							{editando ? "Guardar cambios" : "Registrar proveedor"}
 						</Button>
 					</SheetFooter>
@@ -662,6 +720,7 @@ function AdminProveedores() {
 					<AlertDialogFooter>
 						<AlertDialogCancel>Cancelar</AlertDialogCancel>
 						<AlertDialogAction
+							disabled={guardando}
 							onClick={confirmarEliminar}
 							className="bg-destructive text-white hover:bg-destructive/90"
 						>
@@ -684,8 +743,8 @@ function AdminProveedores() {
 	);
 }
 
-function DetalleProveedor({ proveedor }: { proveedor: Proveedor }) {
-	const inmuebles = getInmueblesDeProveedor(proveedor.id);
+function DetalleProveedor({ proveedor }: { proveedor: ProveedorAdmin }) {
+	const inmuebles = proveedor.inmuebles;
 
 	return (
 		<>
@@ -776,11 +835,6 @@ function DetalleProveedor({ proveedor }: { proveedor: Proveedor }) {
 						<span className="truncate">{proveedor.zonaPrincipal}</span>
 					</p>
 				</div>
-
-				<p className="text-xs text-muted-foreground">
-					Los datos son de ejemplo. El EntityPicker y el ZonePicker
-					reutilizables alimentan este módulo y los formularios de inmuebles.
-				</p>
 			</div>
 		</>
 	);

@@ -7,7 +7,7 @@ import {
 	SlidersHorizontal,
 	X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { EmptyState } from "@/components/common/empty-state";
 import { PublicLayout } from "@/components/layout/public-layout";
 import { PropertyCard } from "@/components/property/property-card";
@@ -47,20 +47,43 @@ import {
 	SheetTitle,
 	SheetTrigger,
 } from "@/components/ui/sheet";
-import { inmuebles } from "@/data/inmuebles";
 import type { OrdenCatalogo, VistaCatalogo } from "@/lib/catalog";
 import {
-	filtrarYOrdenar,
 	filtrosActivos,
 	ORDEN_OPCIONES,
 	validateCatalogSearch,
 } from "@/lib/catalog";
 import { formatNumber } from "@/lib/format";
-
-const POR_PAGINA = 6;
+import { listarCatalogo, listarZonas } from "@/server/catalogo";
 
 export const Route = createFileRoute("/propiedades/")({
 	validateSearch: validateCatalogSearch,
+	loaderDeps: ({ search }) => ({
+		q: search.q,
+		tipo: search.tipo as "Casa" | "Departamento" | "Local" | undefined,
+		zona: search.zona,
+		precioMin: search.precioMin,
+		precioMax: search.precioMax,
+		habitaciones: search.habitaciones,
+		orden: search.orden,
+		pagina: search.pagina,
+	}),
+	loader: async ({ deps }) => {
+		const [inicial, zonas] = await Promise.all([
+			listarCatalogo({ data: deps }),
+			listarZonas(),
+		]);
+
+		// Si la URL pide una página que ya no existe, repetimos en la última.
+		const resultado =
+			inicial.total > 0 && (deps.pagina ?? 1) > inicial.totalPaginas
+				? await listarCatalogo({
+						data: { ...deps, pagina: inicial.totalPaginas },
+					})
+				: inicial;
+
+		return { ...resultado, zonas };
+	},
 	head: () => ({
 		meta: [
 			{ title: "Propiedades en alquiler · RE/MAX Potosí" },
@@ -77,29 +100,23 @@ export const Route = createFileRoute("/propiedades/")({
 function CatalogoPage() {
 	const search = Route.useSearch();
 	const navigate = useNavigate();
-	const [cargando, setCargando] = useState(true);
+	const {
+		inmuebles: resultados,
+		total,
+		pagina,
+		porPagina,
+		totalPaginas,
+		zonas,
+	} = Route.useLoaderData();
+	const cargando = Route.useMatch({
+		select: (match) => match.status === "pending",
+	});
 	const [filtrosAbiertos, setFiltrosAbiertos] = useState(false);
 
-	useEffect(() => {
-		const id = window.setTimeout(() => setCargando(false), 620);
-		return () => window.clearTimeout(id);
-	}, []);
-
-	const resultados = useMemo(
-		() => filtrarYOrdenar(inmuebles, search),
-		[search],
-	);
-	const activos = filtrosActivos(search);
+	const activos = useMemo(() => filtrosActivos(search), [search]);
 	const vista: VistaCatalogo = search.vista ?? "grilla";
 	const orden: OrdenCatalogo = search.orden ?? "relevancia";
-	const pagina = search.pagina ?? 1;
-
-	const totalPaginas = Math.max(1, Math.ceil(resultados.length / POR_PAGINA));
 	const paginaActual = Math.min(pagina, totalPaginas);
-	const visibles = resultados.slice(
-		(paginaActual - 1) * POR_PAGINA,
-		paginaActual * POR_PAGINA,
-	);
 
 	function setVista(nueva: VistaCatalogo) {
 		void navigate({
@@ -174,7 +191,7 @@ function CatalogoPage() {
 						<p className="mt-2 text-sm text-muted-foreground">
 							{cargando
 								? "Cargando inmuebles…"
-								: `${formatNumber(resultados.length)} inmueble${resultados.length === 1 ? "" : "s"} encontrado${resultados.length === 1 ? "" : "s"} en Potosí.`}
+								: `${formatNumber(total)} inmueble${total === 1 ? "" : "s"} encontrado${total === 1 ? "" : "s"} en Potosí.`}
 						</p>
 					</div>
 				</div>
@@ -185,7 +202,7 @@ function CatalogoPage() {
 							<h2 className="mb-5 font-display text-base font-bold text-foreground">
 								Filtros
 							</h2>
-							<PropertyFilters search={search} />
+							<PropertyFilters search={search} zonas={zonas} />
 						</div>
 					</aside>
 
@@ -213,6 +230,7 @@ function CatalogoPage() {
 									<div className="px-4 pb-6">
 										<PropertyFilters
 											search={search}
+											zonas={zonas}
 											onApplied={() => setFiltrosAbiertos(false)}
 										/>
 									</div>
@@ -316,7 +334,7 @@ function CatalogoPage() {
 										))}
 									</div>
 								)
-							) : visibles.length === 0 ? (
+							) : resultados.length === 0 ? (
 								<EmptyState
 									icon={
 										<SlidersHorizontal className="size-6" aria-hidden="true" />
@@ -344,13 +362,13 @@ function CatalogoPage() {
 										"grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3",
 									)}
 								>
-									{visibles.map((inmueble) => (
+									{resultados.map((inmueble) => (
 										<PropertyCard key={inmueble.id} inmueble={inmueble} />
 									))}
 								</div>
 							) : (
 								<div className="flex flex-col gap-5">
-									{visibles.map((inmueble) => (
+									{resultados.map((inmueble) => (
 										<PropertyCard
 											key={inmueble.id}
 											inmueble={inmueble}
@@ -361,7 +379,7 @@ function CatalogoPage() {
 							)}
 						</div>
 
-						{!cargando && resultados.length > POR_PAGINA ? (
+						{!cargando && total > porPagina ? (
 							<Pagination className="mt-10">
 								<PaginationContent>
 									<PaginationItem>

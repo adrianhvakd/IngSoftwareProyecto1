@@ -94,7 +94,7 @@ una tercera familia.
 | `PublicLayout` | Navbar/footer del sitio público. |
 | `ThemeToggle` | Claro / oscuro / sistema. |
 | `Logo` / `Balloon` | Marca RE/MAX. |
-| `QrVisual` | QR decorativo para pagos simulados. |
+| `QrVisual` | QR decorativo para reportar pagos por QR. |
 | `CredentialsCard` | Credenciales demo y copiado. |
 
 ## 7. Pickers obligatorios

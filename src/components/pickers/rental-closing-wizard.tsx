@@ -42,15 +42,20 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getAlquileresDetalle } from "@/data";
-import { clientes } from "@/data/clientes";
-import { inmuebles } from "@/data/inmuebles";
-import { proveedores } from "@/data/proveedores";
-import type { MedioPago } from "@/data/types";
-import { vendedorActual, vendedores } from "@/data/vendedores";
+import { MEDIO_PAGO_UI_A_DB } from "@/lib/alquileres";
 import { formatBs, formatFechaLarga } from "@/lib/format";
+import {
+	eliminarArchivosAlquiler,
+	subirComprobanteAlquiler,
+	subirContratoAlquiler,
+} from "@/lib/storage";
+import { registrarAlquiler } from "@/server/alquileres/registrar";
+import { crearUsuarioCliente } from "@/server/usuarios";
+import type { OpcionesCierre } from "@/types/alquileres";
+import type { MedioPago } from "@/types/models";
 
 export interface RentalClosingWizardProps {
+	datos: OpcionesCierre;
 	volver?: { to: string; label: string };
 	requiereVendedor?: boolean;
 	irAAlquileres?: { to: string; label: string };
@@ -114,7 +119,18 @@ function sumarMeses(fecha: string, meses: number): string {
 	return base.toISOString().slice(0, 10);
 }
 
+/** Fecha de hoy (YYYY-MM-DD) en horario de Bolivia. */
+function fechaHoyLaPaz(): string {
+	return new Intl.DateTimeFormat("en-CA", {
+		timeZone: "America/La_Paz",
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+	}).format(new Date());
+}
+
 export function RentalClosingWizard({
+	datos,
 	volver,
 	requiereVendedor = false,
 	irAAlquileres,
@@ -139,6 +155,7 @@ export function RentalClosingWizard({
 
 	const [indice, setIndice] = useState(0);
 	const [completados, setCompletados] = useState<PasoId[]>([]);
+	const esAdmin = requiereVendedor;
 
 	// Paso vendedor (admin)
 	const [vendedorId, setVendedorId] = useState<string | null>(null);
@@ -157,13 +174,11 @@ export function RentalClosingWizard({
 	// Paso inmueble
 	const [inmuebleId, setInmuebleId] = useState<string | null>(null);
 	const [montoMensual, setMontoMensual] = useState("");
-	const [fechaInicio, setFechaInicio] = useState("2026-11-01");
+	const [fechaInicio, setFechaInicio] = useState(fechaHoyLaPaz);
 	const [duracion, setDuracion] = useState("12");
 	const [diaCobro, setDiaCobro] = useState("5");
 	const [deposito, setDeposito] = useState("");
-	const [comision, setComision] = useState(
-		String((requiereVendedor ? vendedores[0] : vendedorActual).comisionFija),
-	);
+	const [comision, setComision] = useState(String(datos.comisionInicial));
 
 	// Paso firma
 	const [archivoContrato, setArchivoContrato] = useState<File | null>(null);
@@ -181,22 +196,14 @@ export function RentalClosingWizard({
 	);
 	const [progreso, setProgreso] = useState(0);
 	const [mensajeProgreso, setMensajeProgreso] = useState("");
-	const timers = useRef<number[]>([]);
-	const [numeroContrato] = useState(
-		() =>
-			`ALQ-2026-${String(getAlquileresDetalle().length + 1).padStart(3, "0")}`,
-	);
+	const [numeroContrato, setNumeroContrato] = useState<string | null>(null);
 
-	useEffect(() => {
-		return () => {
-			for (const t of timers.current) window.clearTimeout(t);
-		};
-	}, []);
-
-	const inmueble = inmuebles.find((i) => i.id === inmuebleId) ?? null;
-	const proveedor = proveedores.find((p) => p.id === inmueble?.proveedorId);
-	const clienteExistente = clientes.find((c) => c.id === clienteId);
-	const vendedorSel = vendedores.find((v) => v.id === vendedorId);
+	const inmueble = datos.inmuebles.find((i) => i.id === inmuebleId) ?? null;
+	const clienteExistente = datos.clientes.find((c) => c.id === clienteId);
+	const vendedorSel = datos.vendedores.find((v) => v.id === vendedorId);
+	const vendedorEfectivo = esAdmin
+		? vendedorSel
+		: (datos.vendedorActual ?? null);
 
 	const arrendatario =
 		clienteModo === "existente"
@@ -204,6 +211,8 @@ export function RentalClosingWizard({
 			: nuevoNombre || "—";
 
 	const fechaFin = sumarMeses(fechaInicio, Number(duracion) || 12);
+	const proveedorNombre = inmueble?.proveedorNombre?.trim() || "Propietario";
+	const contratoVisible = numeroContrato ?? "Por asignar";
 
 	function marcarCompletado(id: PasoId) {
 		setCompletados((prev) => (prev.includes(id) ? prev : [...prev, id]));
@@ -238,12 +247,26 @@ export function RentalClosingWizard({
 		if (actual.id === "firma" && !archivoContrato) {
 			return "Adjunta el contrato firmado y escaneado.";
 		}
+		if (
+			actual.id === "firma" &&
+			archivoContrato &&
+			archivoContrato.type !== "application/pdf"
+		) {
+			return "El contrato debe ser un archivo PDF.";
+		}
 		if (actual.id === "pago") {
 			if (!montoCierre || Number(montoCierre) <= 0) {
 				return "Indica el monto del cobro de cierre.";
 			}
 			if (!archivoComprobante) {
 				return "Adjunta el comprobante del cobro de cierre.";
+			}
+			if (
+				!["application/pdf", "image/jpeg", "image/png", "image/webp"].includes(
+					archivoComprobante.type,
+				)
+			) {
+				return "El comprobante debe ser PDF o una imagen JPG, PNG o WEBP.";
 			}
 		}
 		return null;
@@ -259,38 +282,130 @@ export function RentalClosingWizard({
 		irA(indice + 1);
 	}
 
-	function finalizar() {
+	async function finalizar() {
 		const error = validarActual();
 		if (error) {
 			toast.error("Completa este paso", { description: error });
 			return;
 		}
+
+		if (!vendedorEfectivo) {
+			toast.error("Falta el vendedor responsable", {
+				description: "Selecciona un vendedor activo antes de cerrar.",
+			});
+			return;
+		}
+
+		const contrato = archivoContrato;
+		const comprobante = archivoComprobante;
+		if (!contrato || !comprobante) {
+			toast.error("Faltan archivos del cierre");
+			return;
+		}
+
 		marcarCompletado(pasos[indice].id);
 		setEstado("subiendo");
-		setProgreso(0);
-		setMensajeProgreso("Subiendo contrato…");
-		timers.current.push(
-			window.setTimeout(() => {
-				setProgreso(60);
-				setMensajeProgreso("Subiendo comprobante…");
-			}, 700),
-			window.setTimeout(() => {
-				setProgreso(86);
-				setMensajeProgreso("Registrando el alquiler…");
-			}, 1400),
-			window.setTimeout(() => {
-				setProgreso(100);
-				setMensajeProgreso("Listo");
-			}, 1900),
-			window.setTimeout(() => {
-				setEstado("exito");
-			}, 2200),
-		);
+		setProgreso(5);
+		setMensajeProgreso("Preparando el cierre…");
+
+		const alquilerId = crypto.randomUUID();
+		let contratoPath: string | null = null;
+		let comprobantePath: string | null = null;
+		let clienteCreado = false;
+
+		try {
+			let clienteFinalId = clienteId;
+
+			if (clienteModo === "nuevo") {
+				setMensajeProgreso("Creando la cuenta del cliente…");
+				setProgreso(15);
+
+				const partes = nuevoNombre.trim().split(/\s+/);
+				const nombres = partes.shift() ?? nuevoNombre.trim();
+				const apellidos = partes.join(" ") || nombres;
+				const creado = await crearUsuarioCliente({
+					data: {
+						nombres,
+						apellidos,
+						ci: nuevoCi.trim() || undefined,
+						telefono: nuevoTelefono.trim() || undefined,
+						correo: nuevoEmail.trim(),
+						password: nuevoPassword.trim() || undefined,
+					},
+				});
+
+				clienteFinalId = creado.id;
+				clienteCreado = true;
+				setNuevoPassword(creado.password);
+			}
+
+			if (!clienteFinalId) {
+				throw new Error("Selecciona un cliente para el contrato.");
+			}
+
+			setMensajeProgreso("Subiendo contrato…");
+			setProgreso(35);
+			contratoPath = await subirContratoAlquiler(alquilerId, contrato);
+
+			setMensajeProgreso("Subiendo comprobante…");
+			setProgreso(60);
+			comprobantePath = await subirComprobanteAlquiler(alquilerId, comprobante);
+
+			setMensajeProgreso("Registrando el alquiler…");
+			setProgreso(80);
+
+			const resultado = await registrarAlquiler({
+				data: {
+					alquilerId,
+					clienteId: clienteFinalId,
+					vendedorId: vendedorEfectivo.id,
+					inmuebleId: inmuebleId ?? "",
+					montoMensual: Number(montoMensual),
+					fechaInicio,
+					duracionMeses: Number(duracion),
+					diaCobro: Number(diaCobro),
+					deposito: Number(deposito) || 0,
+					contratoPath,
+					pagoCierre: {
+						monto: Number(montoCierre),
+						medio: MEDIO_PAGO_UI_A_DB[medio],
+						comprobantePath,
+					},
+				},
+			});
+
+			setProgreso(100);
+			setMensajeProgreso("Listo");
+			setNumeroContrato(resultado.numeroContrato);
+			setEstado("exito");
+
+			toast.success("Alquiler registrado", {
+				description: `Contrato ${resultado.numeroContrato} creado correctamente.`,
+			});
+		} catch (fallo) {
+			setEstado("edicion");
+			setProgreso(0);
+
+			if (comprobantePath) {
+				await eliminarArchivosAlquiler("comprobantes", [comprobantePath]);
+			}
+			if (contratoPath) {
+				await eliminarArchivosAlquiler("contratos", [contratoPath]);
+			}
+
+			const detalle =
+				fallo instanceof Error
+					? fallo.message
+					: "No se pudo registrar el alquiler.";
+			toast.error("No se pudo registrar el alquiler", {
+				description: clienteCreado
+					? `${detalle} La cuenta del cliente quedó creada.`
+					: detalle,
+			});
+		}
 	}
 
 	function reiniciar() {
-		for (const t of timers.current) window.clearTimeout(t);
-		timers.current = [];
 		setIndice(0);
 		setCompletados([]);
 		setVendedorId(null);
@@ -303,32 +418,30 @@ export function RentalClosingWizard({
 		setNuevoPassword("");
 		setInmuebleId(null);
 		setMontoMensual("");
-		setFechaInicio("2026-11-01");
+		setFechaInicio(fechaHoyLaPaz());
 		setDuracion("12");
 		setDiaCobro("5");
 		setDeposito("");
-		setComision(
-			String((requiereVendedor ? vendedores[0] : vendedorActual).comisionFija),
-		);
+		setComision(String(datos.comisionInicial));
 		setArchivoContrato(null);
 		setMontoCierre("");
 		setMedio("Transferencia QR");
 		setArchivoComprobante(null);
 		setProgreso(0);
+		setMensajeProgreso("");
+		setNumeroContrato(null);
 		setEstado("edicion");
 	}
 
 	function seleccionarInmueble(id: string | null) {
 		setInmuebleId(id);
-		const elegido = inmuebles.find((i) => i.id === id);
+		const elegido = datos.inmuebles.find((i) => i.id === id);
 		if (elegido) {
 			setMontoMensual(String(elegido.precio));
 			setDeposito(String(elegido.precio));
 			setMontoCierre(String(elegido.precio));
 		}
 	}
-
-	const esAdmin = requiereVendedor;
 
 	if (estado === "exito") {
 		return (
@@ -343,13 +456,16 @@ export function RentalClosingWizard({
 								¡Alquiler registrado con éxito!
 							</h2>
 							<p className="mt-1 max-w-md text-sm text-muted-foreground">
-								Se registró el contrato <strong>{numeroContrato}</strong> del
-								inmueble {inmueble?.codigo} a nombre de {arrendatario}.
+								Se registró el contrato <strong>{numeroContrato ?? "—"}</strong>{" "}
+								del inmueble {inmueble?.codigo} a nombre de {arrendatario}.
 							</p>
 						</div>
 
 						<div className="grid gap-3 rounded-xl border border-border bg-secondary/40 p-4 sm:grid-cols-2">
-							<ResumenFila etiqueta="N.º de contrato" valor={numeroContrato} />
+							<ResumenFila
+								etiqueta="N.º de contrato"
+								valor={numeroContrato ?? "—"}
+							/>
 							<ResumenFila
 								etiqueta="Inmueble"
 								valor={`${inmueble?.codigo ?? "—"} · ${inmueble?.zona ?? ""}`}
@@ -479,7 +595,7 @@ export function RentalClosingWizard({
 								</p>
 							</div>
 							<EntityPicker
-								items={vendedores.map((v) => ({
+								items={datos.vendedores.map((v) => ({
 									id: v.id,
 									nombre: v.nombre,
 									avatarUrl: v.avatarUrl,
@@ -488,7 +604,7 @@ export function RentalClosingWizard({
 								value={vendedorId}
 								onChange={(id) => {
 									setVendedorId(id);
-									const v = vendedores.find((x) => x.id === id);
+									const v = datos.vendedores.find((x) => x.id === id);
 									if (v) setComision(String(v.comisionFija));
 								}}
 								placeholder="Buscar vendedor…"
@@ -514,7 +630,7 @@ export function RentalClosingWizard({
 
 								<TabsContent value="existente" className="mt-4">
 									<EntityPicker
-										items={clientes.map((c) => ({
+										items={datos.clientes.map((c) => ({
 											id: c.id,
 											nombre: c.nombre,
 											avatarUrl: c.avatarUrl,
@@ -600,7 +716,7 @@ export function RentalClosingWizard({
 								<div className="flex flex-col gap-2">
 									<Label>Inmueble</Label>
 									<PropertyPicker
-										inmuebles={inmuebles}
+										inmuebles={datos.inmuebles}
 										value={inmuebleId}
 										onChange={seleccionarInmueble}
 									/>
@@ -611,7 +727,7 @@ export function RentalClosingWizard({
 												aria-hidden="true"
 											/>
 											{inmueble.tipo} en {inmueble.zona} · propietario{" "}
-											{proveedor?.nombre}
+											{proveedorNombre}
 										</p>
 									) : null}
 								</div>
@@ -684,8 +800,15 @@ export function RentalClosingWizard({
 											min={0}
 											inputMode="numeric"
 											value={comision}
-											onChange={(e) => setComision(e.target.value)}
+											disabled
+											aria-describedby="c-com-nota"
 										/>
+										<p
+											id="c-com-nota"
+											className="text-xs text-muted-foreground"
+										>
+											Se toma de la comisión fija del vendedor.
+										</p>
 									</div>
 								</div>
 							</CardContent>
@@ -760,7 +883,7 @@ export function RentalClosingWizard({
 								CONTRATO DE ARRENDAMIENTO DE INMUEBLE
 							</h1>
 							<p className="mt-1 text-center text-[11px] text-slate-500">
-								Ref. {inmueble?.codigo ?? "—"} · {numeroContrato} · Suscrito en
+								Ref. {inmueble?.codigo ?? "—"} · {contratoVisible} · Suscrito en
 								la ciudad de Potosí
 							</p>
 
@@ -768,7 +891,7 @@ export function RentalClosingWizard({
 								<p>
 									Conste por el presente documento el contrato de arrendamiento
 									que celebran, por una parte,{" "}
-									<strong>{proveedor?.nombre ?? "—"}</strong>, en calidad de{" "}
+									<strong>{proveedorNombre}</strong>, en calidad de{" "}
 									<strong>ARRENDADOR</strong>, y por otra,{" "}
 									<strong>{arrendatario}</strong>, en calidad de{" "}
 									<strong>ARRENDATARIO</strong>, bajo las siguientes cláusulas:
@@ -808,7 +931,7 @@ export function RentalClosingWizard({
 								<div>
 									<div className="border-t border-slate-400 pt-2">
 										<p className="font-semibold text-slate-700">
-											{proveedor?.nombre ?? "—"}
+											{proveedorNombre}
 										</p>
 										<p className="text-[11px] text-slate-500">ARRENDADOR</p>
 									</div>
@@ -825,9 +948,7 @@ export function RentalClosingWizard({
 
 							<footer className="mt-10 flex items-center justify-between border-t border-slate-200 pt-4 text-[10px] text-slate-400">
 								<span>RE/MAX Potosí · Gestión de alquileres</span>
-								<span>
-									Agente: {(esAdmin ? vendedorSel : vendedorActual)?.nombre}
-								</span>
+								<span>Agente: {vendedorEfectivo?.nombre ?? "Sin asignar"}</span>
 							</footer>
 						</article>
 					</div>
@@ -851,7 +972,8 @@ export function RentalClosingWizard({
 									onArchivo={setArchivoContrato}
 									icono={<FileText className="size-5" aria-hidden="true" />}
 									titulo="Arrastra el contrato escaneado o haz clic para subir"
-									hint="PDF o imagen del contrato firmado."
+									hint="PDF del contrato firmado (máx. 15 MB)."
+									accept="application/pdf"
 								/>
 							</CardContent>
 						</Card>
@@ -864,7 +986,7 @@ export function RentalClosingWizard({
 								<ResumenFila
 									etiqueta="Agente"
 									valor={
-										(esAdmin ? vendedorSel : vendedorActual)?.nombre ?? "—"
+										(esAdmin ? vendedorSel : vendedorEfectivo)?.nombre ?? "—"
 									}
 								/>
 								<ResumenFila
@@ -966,7 +1088,7 @@ export function RentalClosingWizard({
 								{medio === "Transferencia QR" ? (
 									<div className="flex flex-col items-center gap-4 rounded-xl border border-border bg-card p-6 sm:flex-row">
 										<QrVisual
-											value={`remax-potosi:${numeroContrato}:${montoCierre}`}
+											value={`remax-potosi:${contratoVisible}:${montoCierre}`}
 											className="shrink-0 rounded-lg border border-border bg-white p-2"
 										/>
 										<div className="text-center sm:text-left">
@@ -1003,7 +1125,7 @@ export function RentalClosingWizard({
 										onArchivo={setArchivoComprobante}
 										icono={<Upload className="size-5" aria-hidden="true" />}
 										titulo="Arrastra el comprobante o haz clic para subir"
-										hint="PDF o imagen del comprobante de pago."
+										hint="PDF o imagen del comprobante de pago (máx. 10 MB)."
 									/>
 								</div>
 							</CardContent>
@@ -1018,7 +1140,7 @@ export function RentalClosingWizard({
 									/>
 									Resumen del cobro
 								</h2>
-								<ResumenFila etiqueta="Contrato" valor={numeroContrato} />
+								<ResumenFila etiqueta="Contrato" valor={contratoVisible} />
 								<ResumenFila etiqueta="Método" valor={medio} />
 								<ResumenFila
 									etiqueta="Monto del cobro"
@@ -1150,12 +1272,14 @@ function Dropzone({
 	icono,
 	titulo,
 	hint,
+	accept = "application/pdf,image/*",
 }: {
 	archivo: File | null;
 	onArchivo: (file: File | null) => void;
 	icono: ReactNode;
 	titulo: string;
 	hint: string;
+	accept?: string;
 }) {
 	const [arrastrando, setArrastrando] = useState(false);
 	const inputRef = useRef<HTMLInputElement>(null);
@@ -1249,7 +1373,7 @@ function Dropzone({
 			<input
 				ref={inputRef}
 				type="file"
-				accept="application/pdf,image/*"
+				accept={accept}
 				className="sr-only"
 				onChange={(e) => aceptar(e.target.files)}
 			/>

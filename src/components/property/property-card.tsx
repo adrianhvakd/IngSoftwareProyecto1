@@ -3,8 +3,8 @@ import { cn } from "cn";
 import { Bath, BedDouble, Car, MapPin, Maximize2, Star } from "lucide-react";
 import { SmartImage } from "@/components/common/smart-image";
 import { inmuebleTone, StatusBadge } from "@/components/common/status-badge";
-import type { Inmueble } from "@/data/types";
 import { formatBsMes } from "@/lib/format";
+import type { Inmueble } from "@/types/models";
 
 interface PropertyCardProps {
 	inmueble: Inmueble;

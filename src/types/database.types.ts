@@ -494,6 +494,31 @@ export type Database = {
 				Args: { p_name: string };
 				Returns: boolean;
 			};
+			marcar_password_actualizada: {
+				Args: Record<PropertyKey, never>;
+				Returns: undefined;
+			};
+			listar_agentes_publicos: {
+				Args: Record<PropertyKey, never>;
+				Returns: Array<{
+					id: string;
+					nombre: string;
+					cargo: string;
+					zona: string;
+					telefono: string;
+					avatar_url: string;
+					alquileres_gestionados: number;
+				}>;
+			};
+			resumen_publico: {
+				Args: Record<PropertyKey, never>;
+				Returns: Array<{
+					inmuebles_disponibles: number;
+					agentes_activos: number;
+					zonas_activas: number;
+					contratos_gestionados: number;
+				}>;
+			};
 		};
 		Enums: {
 			rol_usuario: "administrador" | "vendedor" | "cliente";

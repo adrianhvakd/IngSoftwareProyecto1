@@ -40,50 +40,25 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import {
-	getAlquileresDetalle,
-	getResumenAdministrador,
-	getVisitasDetalle,
-} from "@/data";
-import {
 	formatBs,
 	formatFecha,
 	formatFechaSemana,
 	formatHora,
 	iniciales,
 } from "@/lib/format";
+import { obtenerDashboardAdmin } from "@/server/admin/dashboard";
 
 export const Route = createFileRoute("/admin/")({
+	loader: () => obtenerDashboardAdmin(),
 	head: () => ({
 		meta: [{ title: "Dashboard · Administración · RE/MAX Potosí" }],
 	}),
 	component: AdminDashboard,
 });
 
-const HOY = new Date("2026-10-17T00:00:00").getTime();
-
 function AdminDashboard() {
-	const resumen = getResumenAdministrador();
-	const alquileres = getAlquileresDetalle();
-
-	const proximasVisitas = getVisitasDetalle()
-		.filter(
-			(v) => v.estado === "Pendiente" && new Date(v.fechaHora).getTime() >= HOY,
-		)
-		.slice(0, 5);
-
-	const alertas = alquileres
-		.filter(
-			(a) =>
-				a.estado === "Vigente" &&
-				a.cuotaActual &&
-				(a.cuotaActual.estado === "En mora" ||
-					a.cuotaActual.estado === "Por vencer"),
-		)
-		.sort((a, b) => {
-			const peso = (e?: string) => (e === "En mora" ? 0 : 1);
-			return peso(a.cuotaActual?.estado) - peso(b.cuotaActual?.estado);
-		})
-		.slice(0, 5);
+	const { resumen, proximasVisitas, alertas, ingresos, visitasPorEstado } =
+		Route.useLoaderData();
 
 	return (
 		<>
@@ -117,28 +92,25 @@ function AdminDashboard() {
 					valor={String(resumen.inmueblesActivos)}
 					icono={<Building2 className="size-4" aria-hidden="true" />}
 					tono="primary"
-					tendencia={{ valor: "8%", direccion: "up" }}
 				/>
 				<StatCard
 					label="Visitas esta semana"
 					valor={String(resumen.visitasSemana)}
 					icono={<CalendarCheck className="size-4" aria-hidden="true" />}
 					tono="success"
-					hint="Agenda del 12 al 19 de octubre"
+					hint="Agendadas en los últimos 7 días"
 				/>
 				<StatCard
 					label="Alquileres vigentes"
 					valor={String(resumen.alquileresVigentes)}
 					icono={<Users className="size-4" aria-hidden="true" />}
 					tono="primary"
-					tendencia={{ valor: "2", direccion: "up" }}
 				/>
 				<StatCard
 					label="Cobros del mes"
 					valor={formatBs(resumen.cobrosDelMes)}
 					icono={<Wallet className="size-4" aria-hidden="true" />}
 					tono="primary"
-					tendencia={{ valor: "5%", direccion: "up" }}
 				/>
 			</section>
 
@@ -180,7 +152,7 @@ function AdminDashboard() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="px-3 pb-4 sm:px-6">
-						<IncomeChart />
+						<IncomeChart data={ingresos} />
 					</CardContent>
 				</Card>
 
@@ -194,7 +166,7 @@ function AdminDashboard() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
-						<VisitsChart />
+						<VisitsChart data={visitasPorEstado} />
 					</CardContent>
 				</Card>
 			</section>
@@ -316,12 +288,12 @@ function AdminDashboard() {
 								>
 									<span
 										className={
-											a.cuotaActual?.estado === "En mora"
+											a.estado === "En mora"
 												? "mt-0.5 grid size-9 shrink-0 place-items-center rounded-lg bg-red-50 text-destructive"
 												: "mt-0.5 grid size-9 shrink-0 place-items-center rounded-lg bg-warning-soft text-warning"
 										}
 									>
-										{a.cuotaActual?.estado === "En mora" ? (
+										{a.estado === "En mora" ? (
 											<CircleAlert className="size-4" aria-hidden="true" />
 										) : (
 											<TriangleAlert className="size-4" aria-hidden="true" />
@@ -330,22 +302,18 @@ function AdminDashboard() {
 									<span className="min-w-0 flex-1">
 										<span className="flex items-center justify-between gap-2">
 											<span className="truncate text-sm font-semibold text-foreground">
-												{a.cliente.nombre}
+												{a.clienteNombre}
 											</span>
-											<StatusBadge
-												tone={cuotaTone[a.cuotaActual?.estado ?? "Al día"]}
-											>
-												{a.cuotaActual?.estado}
+											<StatusBadge tone={cuotaTone[a.estado]}>
+												{a.estado}
 											</StatusBadge>
 										</span>
 										<span className="mt-0.5 block truncate text-xs text-muted-foreground">
-											{a.inmueble.codigo} · vence{" "}
-											{a.cuotaActual
-												? formatFecha(a.cuotaActual.fechaVencimiento)
-												: "—"}
+											{a.inmuebleCodigo} · vence{" "}
+											{formatFecha(a.fechaVencimiento)}
 										</span>
 										<span className="mt-0.5 block font-display text-sm font-bold tabular text-foreground">
-											{formatBs(a.cuotaActual?.monto ?? 0)}
+											{formatBs(a.monto)}
 										</span>
 									</span>
 								</Link>

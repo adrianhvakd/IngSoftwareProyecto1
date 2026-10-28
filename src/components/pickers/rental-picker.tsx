@@ -24,12 +24,12 @@ import {
 	SheetHeader,
 	SheetTitle,
 } from "@/components/ui/sheet";
-import type { AlquilerDetalle } from "@/data";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { formatBs, formatFecha } from "@/lib/format";
+import type { AlquilerDetalleUI } from "@/types/models";
 
 interface RentalPickerProps {
-	alquileres: AlquilerDetalle[];
+	alquileres: AlquilerDetalleUI[];
 	value: string | null;
 	onChange: (id: string | null) => void;
 	placeholder?: string;

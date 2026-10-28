@@ -2,6 +2,7 @@ import {
 	createRootRoute,
 	HeadContent,
 	Outlet,
+	redirect,
 	Scripts,
 } from "@tanstack/react-router";
 import { ErrorPage } from "@/components/system/error-page";
@@ -12,9 +13,26 @@ import {
 } from "@/components/theme/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { obtenerSesion } from "@/server/auth";
 import appCss from "../styles.css?url";
 
 export const Route = createRootRoute({
+	// La sesión se resuelve una vez por navegación y queda disponible en el
+	// contexto de todas las rutas hijas (guards, navbar y paneles).
+	beforeLoad: async ({ location }) => {
+		const sesion = await obtenerSesion();
+
+		// La contraseña temporal es obligatoria: hasta cambiarla no se puede
+		// navegar a ninguna otra pantalla (incluido el sitio público).
+		if (
+			sesion?.debeCambiarPassword &&
+			location.pathname !== "/cambiar-password"
+		) {
+			throw redirect({ to: "/cambiar-password" });
+		}
+
+		return { sesion };
+	},
 	head: () => ({
 		meta: [
 			{ charSet: "utf-8" },

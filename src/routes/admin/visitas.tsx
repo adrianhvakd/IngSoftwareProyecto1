@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
 import {
 	CalendarCheck,
 	CalendarDays,
@@ -40,13 +40,17 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { VisitaDetalle } from "@/data";
-import { getVisitasDetalle } from "@/data";
-import type { VisitaEstado } from "@/data/types";
-import { vendedores } from "@/data/vendedores";
-import { formatFechaSemana, formatHora } from "@/lib/format";
+import { ESTADO_VISITA_UI_A_DB } from "@/lib/admin";
+import { fechaDiaLaPaz, formatFechaSemana, formatHora } from "@/lib/format";
+import {
+	asignarVendedorVisita,
+	cambiarEstadoVisita,
+	listarVisitasAdmin,
+} from "@/server/admin/visitas";
+import type { VisitaDetalle, VisitaEstado } from "@/types/models";
 
 export const Route = createFileRoute("/admin/visitas")({
+	loader: () => listarVisitasAdmin(),
 	head: () => ({
 		meta: [{ title: "Visitas · Administración · RE/MAX Potosí" }],
 	}),
@@ -58,7 +62,11 @@ type FiltroEstado = "todas" | VisitaEstado;
 const ESTADOS: VisitaEstado[] = ["Pendiente", "Realizada", "Cancelada"];
 
 function AdminVisitas() {
-	const [lista, setLista] = useState<VisitaDetalle[]>(getVisitasDetalle);
+	const datosIniciales = Route.useLoaderData();
+	const router = useRouter();
+	const [lista, setLista] = useState<VisitaDetalle[]>(datosIniciales.visitas);
+	const vendedoresDisponibles = datosIniciales.vendedores;
+	const [guardando, setGuardando] = useState(false);
 	const [q, setQ] = useState("");
 	const [estado, setEstado] = useState<FiltroEstado>("todas");
 
@@ -78,7 +86,7 @@ function AdminVisitas() {
 	const agenda = useMemo(() => {
 		const grupos = new Map<string, VisitaDetalle[]>();
 		for (const v of filtradas) {
-			const clave = v.fechaHora.slice(0, 10);
+			const clave = fechaDiaLaPaz(v.fechaHora);
 			const lista = grupos.get(clave) ?? [];
 			lista.push(v);
 			grupos.set(clave, lista);
@@ -86,23 +94,74 @@ function AdminVisitas() {
 		return [...grupos.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 	}, [filtradas]);
 
-	function asignarVendedor(visitaId: string, vendedorId: string) {
-		const vendedor = vendedores.find((v) => v.id === vendedorId);
-		setLista((prev) =>
-			prev.map((v) => (v.id === visitaId ? { ...v, vendedorId, vendedor } : v)),
-		);
-		toast.success("Agente asignado", {
-			description: `${vendedor?.nombre ?? "Agente"} responsable de la visita. (Acción simulada)`,
-		});
+	async function asignarVendedor(visitaId: string, vendedorId: string) {
+		if (guardando) return;
+		const vendedor = vendedoresDisponibles.find((v) => v.id === vendedorId);
+		setGuardando(true);
+		try {
+			const resultado = await asignarVendedorVisita({
+				data: { visitaId, vendedorId },
+			});
+
+			if (!resultado.ok) {
+				toast.error("No se pudo asignar el agente", {
+					description: resultado.error,
+				});
+				return;
+			}
+
+			setLista((prev) =>
+				prev.map((v) =>
+					v.id === visitaId ? { ...v, vendedorId, vendedor } : v,
+				),
+			);
+			toast.success("Agente asignado", {
+				description: `${vendedor?.nombre ?? "Agente"} responsable de la visita.`,
+			});
+			await router.invalidate();
+		} catch (error) {
+			toast.error("No se pudo asignar el agente", {
+				description:
+					error instanceof Error ? error.message : "Inténtalo de nuevo.",
+			});
+		} finally {
+			setGuardando(false);
+		}
 	}
 
-	function cambiarEstado(visitaId: string, nuevo: VisitaEstado) {
-		setLista((prev) =>
-			prev.map((v) => (v.id === visitaId ? { ...v, estado: nuevo } : v)),
-		);
-		toast.info(`Visita marcada como ${nuevo.toLowerCase()}`, {
-			description: "El cambio se refleja en la agenda. (Acción simulada)",
-		});
+	async function cambiarEstado(visitaId: string, nuevo: VisitaEstado) {
+		if (guardando) return;
+		setGuardando(true);
+		try {
+			const resultado = await cambiarEstadoVisita({
+				data: {
+					visitaId,
+					estado: ESTADO_VISITA_UI_A_DB[nuevo],
+				},
+			});
+
+			if (!resultado.ok) {
+				toast.error("No se pudo cambiar el estado", {
+					description: resultado.error,
+				});
+				return;
+			}
+
+			setLista((prev) =>
+				prev.map((v) => (v.id === visitaId ? { ...v, estado: nuevo } : v)),
+			);
+			toast.info(`Visita marcada como ${nuevo.toLowerCase()}`, {
+				description: "El cambio se refleja en la agenda.",
+			});
+			await router.invalidate();
+		} catch (error) {
+			toast.error("No se pudo cambiar el estado", {
+				description:
+					error instanceof Error ? error.message : "Inténtalo de nuevo.",
+			});
+		} finally {
+			setGuardando(false);
+		}
 	}
 
 	const toolbar = (
@@ -181,7 +240,7 @@ function AdminVisitas() {
 									<div className="mb-3 flex items-center gap-3">
 										<span className="inline-flex items-center gap-2 rounded-full bg-blue-soft px-3 py-1 font-display text-xs font-bold text-blue-deep">
 											<CalendarDays className="size-3.5" aria-hidden="true" />
-											{formatFechaSemana(`${dia}T00:00:00`)}
+											{formatFechaSemana(`${dia}T12:00:00-04:00`)}
 										</span>
 										<span className="text-xs text-muted-foreground">
 											{items.length} visita{items.length === 1 ? "" : "s"}
@@ -236,8 +295,9 @@ function AdminVisitas() {
 													<div className="mt-3 flex items-center gap-2">
 														<Select
 															value={v.vendedorId ?? ""}
+															disabled={guardando}
 															onValueChange={(valor) =>
-																asignarVendedor(v.id, valor)
+																void asignarVendedor(v.id, valor)
 															}
 														>
 															<SelectTrigger
@@ -252,7 +312,7 @@ function AdminVisitas() {
 																<SelectValue placeholder="Sin asignar" />
 															</SelectTrigger>
 															<SelectContent>
-																{vendedores
+																{vendedoresDisponibles
 																	.filter((vd) => vd.estado === "Activo")
 																	.map((vd) => (
 																		<SelectItem key={vd.id} value={vd.id}>
@@ -329,8 +389,9 @@ function AdminVisitas() {
 											<TableCell>
 												<Select
 													value={v.vendedorId ?? ""}
+													disabled={guardando}
 													onValueChange={(valor) =>
-														asignarVendedor(v.id, valor)
+														void asignarVendedor(v.id, valor)
 													}
 												>
 													<SelectTrigger
@@ -341,7 +402,7 @@ function AdminVisitas() {
 														<SelectValue placeholder="Sin asignar" />
 													</SelectTrigger>
 													<SelectContent>
-														{vendedores
+														{vendedoresDisponibles
 															.filter((vd) => vd.estado === "Activo")
 															.map((vd) => (
 																<SelectItem key={vd.id} value={vd.id}>

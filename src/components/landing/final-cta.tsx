@@ -44,7 +44,8 @@ export function FinalCta() {
 						</Button>
 					</div>
 					<p className="mt-6 text-xs text-white/55">
-						Sin costo inicial por la publicación · Datos de ejemplo.
+						Sin costo inicial por la publicación · Atención personalizada en
+						Potosí.
 					</p>
 				</div>
 			</div>

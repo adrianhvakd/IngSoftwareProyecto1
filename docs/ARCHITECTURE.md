@@ -1,6 +1,6 @@
 # Arquitectura — RE/MAX Potosí
 
-Última actualización: 2026-10-23.
+Última actualización: 2026-10-28 (fase 5).
 
 ## 1. Vista general
 
@@ -8,31 +8,34 @@
 flowchart LR
   U[Usuario] -->|HTTPS| CF[Cloudflare Worker<br/>TanStack Start]
   CF --> R[React 19 + Router]
-  R -->|hoy| M[Mocks src/data]
-  R -.->|pendiente| B[Supabase browser<br/>clave publicable]
-  CF -.->|createServerFn<br/>pendiente| S[Supabase server<br/>cookies + RLS]
+  R -->|clave publicable| B[Supabase browser<br/>Auth · Storage · QR]
+  CF -->|createServerFn| S[Supabase server<br/>cookies + RLS]
   S --> DB[(PostgreSQL)]
   B --> DB
-  CF -->|solo alta de usuarios| A[Supabase Admin API<br/>service role]
+  CF -->|alta/cambio de correo| A[Supabase Admin API<br/>service role]
   DB --> ST[Storage<br/>inmuebles · contratos · comprobantes]
   DB --> CRON[pg_cron<br/>actualizar_estado_cuotas]
 ```
 
-Estado real: la ruta continua **Mocks** está activa. Los clientes Supabase y el
-esquema existen, pero ninguna pantalla consume la base todavía.
+Estado real: todas las pantallas consumen Supabase. No queda ningún import de
+`src/data`; el modelo de transporte vive en `src/types/models.ts`. Las únicas
+acciones fuera de la base son institucionales (correo/teléfono de la oficina y
+redes sociales) y se configuran en `src/lib/site.ts`.
 
 ## 2. Capas
 
 ### Frontend
 
-- TanStack Start + Router file-based; `src/routes/` contiene 22 pantallas.
+- TanStack Start + Router file-based; `src/routes/` contiene 23 pantallas.
 - Componentes de dominio en `src/components/`, UI shadcn vendorizada en
   `src/components/ui/`.
-- Estado local y validaciones de formulario; los envíos muestran `toast` y
-  simulan latencia. No hay caché de servidor ni loaders conectados.
+- Estado local y validaciones de formulario; las rutas cargan datos con
+  `loader` + server functions y los envíos muestran `toast` con el resultado.
 - Tema claro/oscuro/sistema con `ThemeProvider` y tokens CSS.
-- Datos actuales: `src/data/` (mocks + selectores). No borrar ni reemplazar
-  mientras una pantalla no tenga su equivalente Supabase.
+- Tipos de transporte en `src/types/models.ts`; `database.types.ts` describe el
+  esquema y `src/types/*.ts` los DTO de cada módulo.
+- La landing lee agentes, métricas, zonas y destacados reales. Las secciones
+  puramente institucionales usan `src/lib/site.ts`.
 
 ### Servidor (TanStack Start en Workers)
 
@@ -40,9 +43,11 @@ esquema existen, pero ninguna pantalla consume la base todavía.
   `Authorization`. Usa clave publicable, por lo que **RLS sigue aplicando**.
 - `src/server/supabase-admin.ts`: singleton con service role, solo servidor.
   Salta RLS; se reserva para la Admin API de Auth y tareas administrativas.
-- `src/server/usuarios.ts`: únicos `createServerFn` existentes
-  (`crearUsuarioVendedor`, `crearUsuarioCliente`). Validan el rol del solicitante
-  antes de usar service role. Aún no están llamados desde la UI.
+- `src/server/auth.ts`, `catalogo.ts`, `visitas.ts`, `paneles.ts`,
+  `admin/*` y `alquileres/*`: server functions de lectura y mutación. Las
+  lecturas usan cookies + RLS; las mutaciones críticas llaman a RPC.
+- `src/server/usuarios.ts`: alta de cuentas y cambio de correo con service role;
+  siempre valida el rol del solicitante antes de usar la Admin API.
 - El worker se despliega con Wrangler; `nodejs_compat` habilita `process.env`
   para secretos.
 
@@ -56,7 +61,7 @@ esquema existen, pero ninguna pantalla consume la base todavía.
 
 ## 3. Flujos
 
-### Autenticación (diseñado, no conectado)
+### Autenticación (conectada)
 
 ```mermaid
 sequenceDiagram
@@ -81,15 +86,15 @@ sequenceDiagram
   Admin API con `app_metadata.creado_por_backend = true`. Un auto-registro
   siempre nace `cliente`.
 
-### Lectura de datos (pendiente)
+### Lectura de datos
 
-1. La ruta pide datos a un `createServerFn` (recomendado) o al cliente de
-   navegador.
+1. El `loader` de la ruta llama a un `createServerFn` (o el componente usa el
+   cliente de navegador para Auth/Storage).
 2. La consulta usa vistas (`v_*`) o tablas; RLS filtra por rol y pertenencia.
 3. La vista devuelve campos ya resueltos (zona, nombres, próxima cuota) para
    evitar consultas N+1.
-4. El componente recibe el mismo shape que hoy consumen los mocks, o se adapta
-   en una capa de mapeo.
+4. El servidor mapea la fila a un DTO estable; la UI no depende de la forma
+   cruda de la tabla.
 
 ### Escrituras de negocio (RPC)
 
@@ -113,7 +118,8 @@ No replicar estas reglas en TypeScript. La UI solo valida para dar feedback.
 3. Llama a `registrar_alquiler` con `contrato_path` y `comprobante_path`.
 4. Lectura posterior: admin, vendedor o cliente del alquiler.
 5. Fotos de inmuebles: bucket público `inmuebles`; `inmueble_imagenes.path`
-   guarda la ruta y `url` se usa para los mocks.
+   guarda la ruta y `url` la URL pública. Desde 0010, la escritura queda limitada
+   al administrador o al agente asignado al inmueble de la carpeta.
 
 ## 4. Seguridad
 
@@ -127,26 +133,28 @@ No replicar estas reglas en TypeScript. La UI solo valida para dar feedback.
 - **Rol protegido**: trigger `proteger_rol` impide que un usuario no admin
   modifique `perfiles.rol`; `proteger_campos_perfil` bloquea estado, correo y
   bandera de contraseña temporal.
+- **Visitas**: `proteger_campos_visita` (0009) deja al cliente solo cancelar
+  visitas pendientes propias y al vendedor solo confirmar/cancelar las suyas;
+  cualquier otro campo exige administrador.
 - **Service role**: solo en `src/server/*`; nunca en `VITE_*`. Los cuerpos de
   `createServerFn` no llegan al bundle cliente, pero la disciplina de imports se
   mantiene.
 - **Storage**: contratos/comprobantes privados; la primera carpeta debe ser un
-  UUID de alquiler. Edición/borrado solo admin o vendedor asignado.
+  UUID de alquiler. Fotos de inmuebles: lectura pública, escritura solo admin o
+  agente asignado (0010).
 - **Auditoría**: cambios de inmuebles, alquileres, pagos, rol y comisión fija.
 - **JWT**: no se confía en metadatos del usuario para el rol; se consulta el
   perfil activo en base de datos.
 
 ### Riesgos conocidos
 
-- La política de `UPDATE` de visitas permite al cliente modificar su propia
-  visita (incluido estado/vendedor) mientras no cambie `cliente_id`. Endurecer
-  con triggers o RPC antes de producción.
 - `pagos.validado = false` de un cliente no bloquea el marcado de la cuota como
-  pagada; no hay aprobación posterior.
-- Las migraciones y pruebas se validaron con PGlite, no con un Supabase real.
-  `pg_cron` no se ejecutó localmente.
-- El frontend no tiene guards de ruta ni sesión real; no asumir protección de
-  pantallas hasta implementar auth.
+  pagada; no hay aprobación posterior. El pago queda visible para validación.
+- `pg_cron` no se ejecutó en una base local; debe comprobarse en Supabase.
+- El alta/cambio de correo usa service role; cualquier cambio futuro debe
+  mantener la validación de rol en `src/server/`.
+- La configuración de Redirect URLs de Supabase debe incluir el dominio de
+  producción para futuros flujos de recuperación de contraseña.
 
 ## 5. Despliegue
 

@@ -1,9 +1,16 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import {
+	createFileRoute,
+	Link,
+	redirect,
+	useRouter,
+} from "@tanstack/react-router";
 import { cn } from "cn";
 import {
+	AlertCircle,
 	Check,
 	Eye,
 	EyeOff,
+	Loader2,
 	Lock,
 	Mail,
 	Phone,
@@ -17,8 +24,19 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { rutaPanel } from "@/lib/auth";
+import { registrarCuenta } from "@/server/auth";
 
 export const Route = createFileRoute("/registro")({
+	beforeLoad: ({ context }) => {
+		const sesion = context.sesion;
+		if (!sesion) return;
+		throw redirect({
+			to: sesion.debeCambiarPassword
+				? "/cambiar-password"
+				: rutaPanel(sesion.rol),
+		});
+	},
 	head: () => ({
 		meta: [
 			{ title: "Crear cuenta · RE/MAX Potosí" },
@@ -74,10 +92,12 @@ const colorFuerza = [
 ];
 
 function RegistroPage() {
-	const navigate = useNavigate();
+	const router = useRouter();
 	const [form, setForm] = useState<Formulario>(inicial);
 	const [mostrar, setMostrar] = useState(false);
 	const [acepta, setAcepta] = useState(false);
+	const [enviando, setEnviando] = useState(false);
+	const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
 	const [errores, setErrores] = useState<
 		Partial<Record<keyof Formulario | "acepta", string>>
 	>({});
@@ -88,8 +108,10 @@ function RegistroPage() {
 		setForm((prev) => ({ ...prev, [clave]: valor }));
 	}
 
-	function enviar(evento: React.FormEvent<HTMLFormElement>) {
+	async function enviar(evento: React.FormEvent<HTMLFormElement>) {
 		evento.preventDefault();
+		setErrorGeneral(null);
+
 		const nuevos: typeof errores = {};
 		if (!form.nombre.trim()) nuevos.nombre = "Ingresa tu nombre completo.";
 		if (!form.email.trim()) nuevos.email = "Ingresa tu correo electrónico.";
@@ -106,10 +128,45 @@ function RegistroPage() {
 		setErrores(nuevos);
 		if (Object.keys(nuevos).length > 0) return;
 
-		toast.success("Cuenta creada", {
-			description: "Bienvenido a RE/MAX Potosí. (Acción simulada)",
-		});
-		void navigate({ to: "/cliente" });
+		setEnviando(true);
+
+		try {
+			const resultado = await registrarCuenta({
+				data: {
+					nombres: form.nombre.trim(),
+					apellidos: "",
+					telefono: form.telefono.trim(),
+					correo: form.email.trim(),
+					password: form.password,
+				},
+			});
+
+			if (!resultado.ok) {
+				setErrorGeneral(resultado.error);
+				return;
+			}
+
+			if (resultado.requiereConfirmacion || !resultado.sesion) {
+				toast.success("Cuenta creada", {
+					description:
+						"Revisa tu correo para confirmar la cuenta y luego inicia sesión.",
+				});
+				await router.navigate({ to: "/ingresar" });
+				return;
+			}
+
+			toast.success("Cuenta creada", {
+				description: "Bienvenido a RE/MAX Potosí.",
+			});
+			await router.invalidate();
+			await router.navigate({ to: rutaPanel(resultado.sesion.rol) });
+		} catch {
+			setErrorGeneral(
+				"No se pudo crear la cuenta. Revisa tu conexión e inténtalo de nuevo.",
+			);
+		} finally {
+			setEnviando(false);
+		}
 	}
 
 	return (
@@ -118,6 +175,19 @@ function RegistroPage() {
 			subtitle="Regístrate para agendar visitas y gestionar tu alquiler."
 		>
 			<form onSubmit={enviar} className="grid gap-5" noValidate>
+				{errorGeneral ? (
+					<div
+						role="alert"
+						className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm text-destructive"
+					>
+						<AlertCircle
+							className="mt-0.5 size-4 shrink-0"
+							aria-hidden="true"
+						/>
+						<p>{errorGeneral}</p>
+					</div>
+				) : null}
+
 				<div className="grid gap-1.5">
 					<Label htmlFor="reg-nombre">Nombre completo</Label>
 					<div className="relative">
@@ -295,9 +365,13 @@ function RegistroPage() {
 					) : null}
 				</div>
 
-				<Button type="submit" size="lg" className="w-full">
-					<UserPlus aria-hidden="true" />
-					Crear cuenta
+				<Button type="submit" size="lg" className="w-full" disabled={enviando}>
+					{enviando ? (
+						<Loader2 className="animate-spin" aria-hidden="true" />
+					) : (
+						<UserPlus aria-hidden="true" />
+					)}
+					{enviando ? "Creando cuenta…" : "Crear cuenta"}
 				</Button>
 
 				<p className="flex items-center justify-center gap-1.5 text-center text-xs text-muted-foreground">

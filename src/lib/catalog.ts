@@ -1,41 +1,16 @@
-import type { Inmueble, TipoInmueble } from "@/data/types";
+import type { TipoInmueble } from "@/types/models";
 
 export const TIPOS_INMUEBLE: TipoInmueble[] = ["Casa", "Departamento", "Local"];
 
-export const ZONAS = [
-	"Centro histórico",
-	"Zona Universitaria",
-	"San Clemente",
-	"Pailaviri",
-	"Av. Las Banderas",
-	"Av. Cívica",
-	"Villa Imperial",
-	"Alto Potosí",
-] as const;
-
-export type Zona = (typeof ZONAS)[number];
-
-/** Agrupación de zonas por sector urbano (para el ZonePicker). */
-export const SECTORES: { sector: string; zonas: Zona[] }[] = [
-	{
-		sector: "Centro",
-		zonas: ["Centro histórico", "Av. Cívica"],
-	},
-	{
-		sector: "Norte",
-		zonas: ["Av. Las Banderas", "Alto Potosí", "Villa Imperial"],
-	},
-	{
-		sector: "Sur",
-		zonas: ["San Clemente", "Pailaviri", "Zona Universitaria"],
-	},
-];
-
-export const ZONAS_POPULARES: Zona[] = [
-	"Centro histórico",
-	"Zona Universitaria",
-	"San Clemente",
-];
+/**
+ * Zona real del catálogo con su conteo de inmuebles visibles. Se usa en el
+ * ZonePicker y en los filtros públicos.
+ */
+export interface ZonaOpcion {
+	nombre: string;
+	sector: string;
+	total: number;
+}
 
 export type OrdenCatalogo =
 	| "relevancia"
@@ -104,14 +79,18 @@ export function validateCatalogSearch(
 			? [zonaRaw]
 			: [];
 	const zonas = zonaCruda
-		.filter((z): z is string => typeof z === "string" && z !== "")
-		.filter((z) => (ZONAS as readonly string[]).includes(z));
+		.filter((z): z is string => typeof z === "string")
+		.map((z) => z.trim())
+		.filter((z) => z !== "" && z.length <= 100);
 
 	return {
-		q: typeof search.q === "string" && search.q !== "" ? search.q : undefined,
+		q:
+			typeof search.q === "string" && search.q.trim() !== ""
+				? search.q.trim().slice(0, 120)
+				: undefined,
 		tipo:
 			tipo && TIPOS_INMUEBLE.includes(tipo as TipoInmueble) ? tipo : undefined,
-		zona: zonas.length > 0 ? zonas : undefined,
+		zona: zonas.length > 0 ? [...new Set(zonas)] : undefined,
 		precioMin: aNumero(search.precioMin),
 		precioMax: aNumero(search.precioMax),
 		habitaciones: aNumero(search.habitaciones),
@@ -152,52 +131,4 @@ export function filtrosActivos(search: CatalogSearch): FiltroActivo[] {
 			etiqueta: `${search.habitaciones}+ habitaciones`,
 		});
 	return activos;
-}
-
-const relevancia = (inmueble: Inmueble) =>
-	(inmueble.destacado ? 1000 : 0) + inmueble.visitasMes;
-
-export function filtrarYOrdenar(
-	inmuebles: Inmueble[],
-	search: CatalogSearch,
-): Inmueble[] {
-	const q = search.q?.toLowerCase().trim();
-
-	const filtrados = inmuebles.filter((inmueble) => {
-		if (search.tipo && inmueble.tipo !== search.tipo) return false;
-		if (search.zona && search.zona.length > 0) {
-			if (!search.zona.includes(inmueble.zona)) return false;
-		}
-		if (search.precioMin !== undefined && inmueble.precio < search.precioMin)
-			return false;
-		if (search.precioMax !== undefined && inmueble.precio > search.precioMax)
-			return false;
-		if (search.habitaciones !== undefined && search.habitaciones > 0) {
-			if (inmueble.habitaciones < search.habitaciones) return false;
-		}
-		if (q) {
-			const heno =
-				`${inmueble.titulo} ${inmueble.zona} ${inmueble.direccion} ${inmueble.tipo} ${inmueble.codigo}`.toLowerCase();
-			if (!heno.includes(q)) return false;
-		}
-		return true;
-	});
-
-	const orden = search.orden ?? "relevancia";
-	return [...filtrados].sort((a, b) => {
-		switch (orden) {
-			case "precio-asc":
-				return a.precio - b.precio;
-			case "precio-desc":
-				return b.precio - a.precio;
-			case "recientes":
-				return (
-					new Date(b.publicadoEl).getTime() - new Date(a.publicadoEl).getTime()
-				);
-			case "mayor-superficie":
-				return b.m2 - a.m2;
-			default:
-				return relevancia(b) - relevancia(a);
-		}
-	});
 }

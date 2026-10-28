@@ -7,7 +7,7 @@ import {
 	ChartTooltip,
 	ChartTooltipContent,
 } from "@/components/ui/chart";
-import { visitas } from "@/data/visitas";
+import type { VisitaEstado } from "@/types/models";
 
 const config = {
 	Pendiente: { label: "Pendientes", color: "var(--chart-3)" },
@@ -15,14 +15,11 @@ const config = {
 	Cancelada: { label: "Canceladas", color: "var(--chart-4)" },
 } satisfies ChartConfig;
 
-const ESTADOS = ["Pendiente", "Realizada", "Cancelada"] as const;
-
-const data = ESTADOS.map((estado) => ({
-	estado,
-	cantidad: visitas.filter((v) => v.estado === estado).length,
-}));
-
-export function VisitsChart() {
+export function VisitsChart({
+	data,
+}: {
+	data: Array<{ estado: VisitaEstado; cantidad: number }>;
+}) {
 	return (
 		<ChartContainer config={config} className="mx-auto aspect-square h-[260px]">
 			<PieChart>

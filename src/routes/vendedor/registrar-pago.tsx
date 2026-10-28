@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { cn } from "cn";
 import {
 	ArrowLeft,
@@ -30,12 +30,15 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { getAlquileresDetalle, getPagosDeAlquiler } from "@/data";
-import type { MedioPago } from "@/data/types";
-import { vendedorActual } from "@/data/vendedores";
+import { MEDIO_PAGO_UI_A_DB } from "@/lib/alquileres";
 import { formatBs, formatFecha, formatPeriodo } from "@/lib/format";
+import { eliminarArchivosAlquiler, subirComprobanteCuota } from "@/lib/storage";
+import { listarAlquileresVendedor } from "@/server/alquileres/consultas";
+import { registrarPagoCuota } from "@/server/alquileres/registrar";
+import type { MedioPago } from "@/types/models";
 
 export const Route = createFileRoute("/vendedor/registrar-pago")({
+	loader: () => listarAlquileresVendedor(),
 	head: () => ({
 		meta: [{ title: "Registrar pago · Panel vendedor · RE/MAX Potosí" }],
 	}),
@@ -83,14 +86,13 @@ const METODOS: MetodoPago[] = [
 ];
 
 function RegistrarPago() {
-	const alquileres = useMemo(() => {
-		const propios = getAlquileresDetalle().filter(
-			(a) => a.estado === "Vigente" && a.vendedorId === vendedorActual.id,
-		);
-		return propios.length > 0
-			? propios
-			: getAlquileresDetalle().filter((a) => a.estado === "Vigente");
-	}, []);
+	const router = useRouter();
+	const cargados = Route.useLoaderData();
+
+	const alquileres = useMemo(
+		() => cargados.filter((alquiler) => alquiler.estado === "Vigente"),
+		[cargados],
+	);
 
 	const inicial = useMemo(() => {
 		const conMora = alquileres.find((a) => a.cuotaActual?.estado === "En mora");
@@ -102,17 +104,23 @@ function RegistrarPago() {
 	);
 	const [seleccion, setSeleccion] = useState<string[]>([]);
 	const [medio, setMedio] = useState<MedioPago>("Transferencia QR");
-	const [comprobante, setComprobante] = useState<string | null>(null);
+	const [comprobante, setComprobante] = useState<File | null>(null);
 	const [arrastrando, setArrastrando] = useState(false);
 	const [registrado, setRegistrado] = useState(false);
+	const [enviando, setEnviando] = useState(false);
 	const inputComprobante = useRef<HTMLInputElement>(null);
 
 	const alquiler = alquileres.find((a) => a.id === alquilerId) ?? null;
-	const cuotas = useMemo(
-		() => (alquiler ? getPagosDeAlquiler(alquiler.id) : []),
-		[alquiler],
+	const cuotas = alquiler?.pagos ?? [];
+	const pendientes = cuotas.filter(
+		(c) => c.estado !== "Pagada" && c.estado !== "Anulada",
 	);
-	const pendientes = cuotas.filter((c) => c.estado !== "Pagada");
+
+	useEffect(() => {
+		if (!alquilerId || !alquileres.some((a) => a.id === alquilerId)) {
+			setAlquilerId(alquileres[0]?.id ?? null);
+		}
+	}, [alquileres, alquilerId]);
 
 	// Al cambiar de contrato, selecciona la cuota actual por defecto.
 	useEffect(() => {
@@ -140,11 +148,28 @@ function RegistrarPago() {
 
 	function agregarComprobante(files: FileList | null) {
 		if (!files || files.length === 0) return;
-		setComprobante(files[0].name);
-		toast.success("Comprobante adjuntado", { description: files[0].name });
+		const archivo = files[0];
+		if (
+			!["application/pdf", "image/jpeg", "image/png", "image/webp"].includes(
+				archivo.type,
+			)
+		) {
+			toast.error("Formato no permitido", {
+				description: "Adjunta un PDF o una imagen JPG, PNG o WEBP.",
+			});
+			return;
+		}
+		if (archivo.size > 10 * 1024 * 1024) {
+			toast.error("El comprobante es demasiado grande", {
+				description: "El límite es de 10 MB.",
+			});
+			return;
+		}
+		setComprobante(archivo);
+		toast.success("Comprobante adjuntado", { description: archivo.name });
 	}
 
-	function registrar() {
+	async function registrar() {
 		if (!alquiler) {
 			toast.error("Selecciona un contrato");
 			return;
@@ -161,10 +186,48 @@ function RegistrarPago() {
 			});
 			return;
 		}
-		setRegistrado(true);
-		toast.success("Pago registrado", {
-			description: `${formatBs(total)} · ${alquiler.codigo}. (Acción simulada)`,
-		});
+
+		setEnviando(true);
+		let comprobantePath: string | null = null;
+		let pagosRegistrados = 0;
+
+		try {
+			if (comprobante) {
+				comprobantePath = await subirComprobanteCuota(alquiler.id, comprobante);
+			}
+
+			for (const cuota of seleccionadas) {
+				await registrarPagoCuota({
+					data: {
+						alquilerId: alquiler.id,
+						cuotaId: cuota.id,
+						monto: cuota.monto,
+						medio: MEDIO_PAGO_UI_A_DB[medio],
+						comprobantePath,
+					},
+				});
+				pagosRegistrados += 1;
+			}
+
+			setRegistrado(true);
+			setComprobante(null);
+			toast.success("Pago registrado", {
+				description: `${formatBs(total)} · ${alquiler.codigo}.`,
+			});
+			await router.invalidate();
+		} catch (error) {
+			if (comprobantePath && pagosRegistrados === 0) {
+				await eliminarArchivosAlquiler("comprobantes", [comprobantePath]);
+			}
+			toast.error("No se pudo registrar el pago", {
+				description:
+					error instanceof Error
+						? error.message
+						: "Inténtalo de nuevo en unos segundos.",
+			});
+		} finally {
+			setEnviando(false);
+		}
 	}
 
 	return (
@@ -200,11 +263,17 @@ function RegistrarPago() {
 							</CardDescription>
 						</CardHeader>
 						<CardContent>
-							<RentalPicker
-								alquileres={alquileres}
-								value={alquilerId}
-								onChange={setAlquilerId}
-							/>
+							{alquileres.length === 0 ? (
+								<p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+									No tienes contratos vigentes asignados.
+								</p>
+							) : (
+								<RentalPicker
+									alquileres={alquileres}
+									value={alquilerId}
+									onChange={setAlquilerId}
+								/>
+							)}
 						</CardContent>
 					</Card>
 
@@ -365,12 +434,13 @@ function RegistrarPago() {
 									<div className="flex items-center justify-between rounded-lg border border-success/40 bg-success-soft px-4 py-3">
 										<span className="flex items-center gap-2 text-sm font-medium text-success">
 											<FileCheck2 className="size-4" aria-hidden="true" />
-											{comprobante}
+											{comprobante.name}
 										</span>
 										<Button
 											variant="ghost"
 											size="icon-sm"
 											aria-label="Quitar comprobante"
+											disabled={enviando}
 											onClick={() => {
 												setComprobante(null);
 												setRegistrado(false);
@@ -464,10 +534,15 @@ function RegistrarPago() {
 							<Button
 								variant="cta"
 								className="mt-2 w-full"
-								onClick={registrar}
-								disabled={registrado}
+								onClick={() => void registrar()}
+								disabled={registrado || enviando || !alquiler}
 							>
-								{registrado ? (
+								{enviando ? (
+									<>
+										<Upload className="animate-pulse" aria-hidden="true" />
+										Registrando…
+									</>
+								) : registrado ? (
 									<>
 										<CheckCircle2 aria-hidden="true" />
 										Pago registrado
@@ -481,7 +556,7 @@ function RegistrarPago() {
 							</Button>
 							{registrado ? (
 								<p className="text-center text-xs text-success">
-									El comprobante quedó vinculado al contrato. (Acción simulada)
+									El comprobante quedó vinculado al contrato.
 								</p>
 							) : null}
 						</CardContent>

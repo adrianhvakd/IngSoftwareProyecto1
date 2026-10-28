@@ -8,12 +8,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import type { CatalogSearch } from "@/lib/catalog";
+import type { CatalogSearch, ZonaOpcion } from "@/lib/catalog";
 import { TIPOS_INMUEBLE } from "@/lib/catalog";
 
 interface PropertyFiltersProps {
 	search: CatalogSearch;
 	className?: string;
+	/** Zonas reales con conteos; si se omiten el picker las carga por su cuenta. */
+	zonas?: ZonaOpcion[];
 	/** Se llama al aplicar (para cerrar el Sheet en móvil). */
 	onApplied?: () => void;
 }
@@ -21,6 +23,7 @@ interface PropertyFiltersProps {
 export function PropertyFilters({
 	search,
 	className,
+	zonas,
 	onApplied,
 }: PropertyFiltersProps) {
 	const navigate = useNavigate();
@@ -113,6 +116,7 @@ export function PropertyFilters({
 					id="filtro-zona"
 					mode="multiple"
 					value={search.zona ?? []}
+					zonas={zonas}
 					onChange={(zonas) =>
 						actualizar({ zona: zonas.length > 0 ? zonas : undefined })
 					}

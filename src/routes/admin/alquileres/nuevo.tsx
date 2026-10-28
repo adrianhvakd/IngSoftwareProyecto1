@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { RentalClosingWizard } from "@/components/pickers/rental-closing-wizard";
+import { obtenerOpcionesCierre } from "@/server/alquileres/opciones";
 
 export const Route = createFileRoute("/admin/alquileres/nuevo")({
+	loader: () => obtenerOpcionesCierre(),
 	head: () => ({
 		meta: [
 			{
@@ -13,8 +15,11 @@ export const Route = createFileRoute("/admin/alquileres/nuevo")({
 });
 
 function RegistrarAlquilerAdmin() {
+	const datos = Route.useLoaderData();
+
 	return (
 		<RentalClosingWizard
+			datos={datos}
 			requiereVendedor
 			volver={{ to: "/admin/alquileres", label: "Volver a alquileres" }}
 			irAAlquileres={{ to: "/admin/alquileres", label: "Ver alquileres" }}

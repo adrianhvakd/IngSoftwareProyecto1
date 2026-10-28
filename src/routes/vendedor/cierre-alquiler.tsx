@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { RentalClosingWizard } from "@/components/pickers/rental-closing-wizard";
+import { obtenerOpcionesCierre } from "@/server/alquileres/opciones";
 
 export const Route = createFileRoute("/vendedor/cierre-alquiler")({
+	loader: () => obtenerOpcionesCierre(),
 	head: () => ({
 		meta: [{ title: "Cierre de alquiler · Panel vendedor · RE/MAX Potosí" }],
 	}),
@@ -9,8 +11,11 @@ export const Route = createFileRoute("/vendedor/cierre-alquiler")({
 });
 
 function CierreAlquiler() {
+	const datos = Route.useLoaderData();
+
 	return (
 		<RentalClosingWizard
+			datos={datos}
 			volver={{ to: "/vendedor", label: "Volver al inicio" }}
 			irAAlquileres={{
 				to: "/vendedor/comisiones",

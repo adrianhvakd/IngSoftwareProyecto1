@@ -64,7 +64,7 @@ export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
 				</div>
 
 				<p className="text-center text-xs text-muted-foreground">
-					Prototipo demostrativo · Datos ficticios · RE/MAX Potosí
+					RE/MAX Potosí · Gestión de alquileres en Potosí, Bolivia
 				</p>
 			</div>
 

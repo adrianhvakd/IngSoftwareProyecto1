@@ -1,6 +1,6 @@
 # Contexto del proyecto — RE/MAX Potosí
 
-Última actualización: 2026-10-23.
+Última actualización: 2026-10-28.
 
 ## 1. Dominio
 
@@ -10,9 +10,8 @@ visitas y, al cerrar un contrato, pagan cuotas mensuales. La oficina administra
 usuarios, vendedores, propietarios, inmuebles, cobros y comisiones.
 
 Alcance del prototipo: catálogo público + paneles de administrador, vendedor y
-cliente. El frontend está construido y funciona con datos ficticios; la capa
-Supabase (esquema, reglas, seed) está lista, pero **las pantallas todavía no
-están conectadas**.
+cliente. El frontend y Supabase (Auth, RLS, Storage, RPC y vistas) están
+conectados; no quedan mocks ni acciones simuladas.
 
 ## 2. Roles y permisos
 
@@ -29,9 +28,8 @@ matriz exacta está en [DATABASE.md](DATABASE.md#matriz-rls).
 
 ## 3. Historias de usuario
 
-Las etiquetas HU-01…HU-09 se usan como referencia funcional; los mocks no
-marcan cada historia con ese código. HU-03 y HU-07 se describen por el módulo
-que cubren.
+Las etiquetas HU-01…HU-09 se usan como referencia funcional. HU-03 y HU-07 se
+describen por el módulo que cubren.
 
 | HU | Resumen |
 |---|---|
@@ -92,12 +90,12 @@ que cubren.
 - Los locales no tienen habitaciones (`habitaciones = null`).
 - Español es-BO, moneda Bs, teléfonos +591, fechas de negocio en
   `America/La_Paz`.
-- Fotos de catálogo pueden ser URL externa (mocks) o `path` del bucket público.
+- Fotos de catálogo usan una URL pública o `path` del bucket `inmuebles`.
   Contratos y comprobantes son privados.
 
 ## 5. Supuestos
 
-1. No se migran los datos de `src/data/` a producción; el seed es solo demo.
+1. `src/data/` fue eliminado; el seed es solo demo y no representa datos de producción.
 2. Los usuarios de Auth se crean con la Admin API; un auto-registro nace como
    cliente y no puede elegir rol.
 3. La mora es un porcentaje único tras la gracia, no interés compuesto.
@@ -107,5 +105,5 @@ que cubren.
    revisar con negocio.
 7. El wizard usa un UUID de alquiler generado en el cliente para poder subir
    archivos antes de crear el contrato.
-8. El prototipo no implementa recuperación de contraseña, correos
-   transaccionales ni pasarela de pago real.
+8. La recuperación de contraseña se atiende por correo a la oficina; no hay
+   correos transaccionales automáticos ni pasarela de pago real.

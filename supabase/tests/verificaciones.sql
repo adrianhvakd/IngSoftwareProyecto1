@@ -2,7 +2,7 @@
 -- RE/MAX Potosí · verificaciones de negocio
 -- ============================================================================
 -- Requisitos:
---   * migraciones 0001–0006 aplicadas (0007 es opcional para estas pruebas);
+--   * migraciones 0001–0010 aplicadas (0007 es opcional para estas pruebas);
 --   * supabase/seed.sql ejecutado con las 3 cuentas demo.
 --
 -- Este archivo deja la base intacta: todo ocurre dentro de una transacción y
@@ -158,7 +158,7 @@ begin
 		raise exception 'El inmueble debía quedar en_alquiler; estado: %', v_estado_inmueble;
 	end if;
 
-	raise notice 'OK 1/5 · cierre de alquiler';
+	raise notice 'OK 1/9 · cierre de alquiler';
 end
 $$;
 
@@ -240,7 +240,7 @@ begin
 		raise exception 'Monto del pago esperado % y registrado %', v_total, v_pago_monto;
 	end if;
 
-	raise notice 'OK 2/5 · pago de cuota';
+	raise notice 'OK 2/9 · pago de cuota';
 end
 $$;
 
@@ -328,7 +328,7 @@ begin
 		raise exception 'El job duplicó el aviso de mora: %', v_avisos;
 	end if;
 
-	raise notice 'OK 3/5 · mora y avisos';
+	raise notice 'OK 3/9 · mora y avisos';
 end
 $$;
 
@@ -387,7 +387,7 @@ begin
 		raise exception 'Se esperaba 1 visita pendiente en la franja y hay %', v_visitas;
 	end if;
 
-	raise notice 'OK 4/5 · doble reserva de visita';
+	raise notice 'OK 4/9 · doble reserva de visita';
 end
 $$;
 
@@ -435,11 +435,204 @@ begin
 		raise exception 'El rol del cliente cambió a %; debía seguir siendo cliente.', v_rol;
 	end if;
 
-	raise notice 'OK 5/5 · protección de rol';
+	raise notice 'OK 5/9 · protección de rol';
 end
 $$;
 
 rollback to savepoint proteccion_rol;
+
+-- ============================================================================
+-- 6. Visitas: el cliente solo cancela; no edita otros campos
+-- ============================================================================
+savepoint visitas_cliente;
+
+do $$
+declare
+	v_cliente uuid;
+	v_visita uuid;
+	v_notas text;
+begin
+	select id into v_cliente
+	from auth.users
+	where lower(email) = lower('luis.catari@gmail.com')
+	limit 1;
+
+	select id, notas into v_visita, v_notas
+	from public.visitas
+	where cliente_id = v_cliente
+	  and estado = 'pendiente'
+	limit 1;
+
+	if v_visita is null then
+		raise exception 'El cliente demo no tiene visitas pendientes para probar.';
+	end if;
+
+	perform set_config('request.jwt.claim.sub', v_cliente::text, true);
+	perform set_config(
+		'request.jwt.claims',
+		json_build_object('sub', v_cliente, 'role', 'authenticated')::text,
+		true
+	);
+
+	begin
+		update public.visitas
+		set notas = coalesce(v_notas, '') || ' cambio no permitido'
+		where id = v_visita;
+		raise exception 'El cliente pudo editar las notas de su visita.';
+	exception
+		when insufficient_privilege then
+			null;
+	end;
+
+	begin
+		update public.visitas
+		set estado = 'realizada'
+		where id = v_visita;
+		raise exception 'El cliente pudo marcar su visita como realizada.';
+	exception
+		when insufficient_privilege then
+			null;
+	end;
+
+	raise notice 'OK 6/9 · visitas: cliente solo puede cancelar';
+end
+$$;
+
+rollback to savepoint visitas_cliente;
+
+-- ============================================================================
+-- 7. Visitas: el vendedor no puede reprogramar ni reasignar
+-- ============================================================================
+savepoint visitas_vendedor;
+
+do $$
+declare
+	v_vendedor uuid;
+	v_visita uuid;
+begin
+	select id into v_vendedor
+	from auth.users
+	where lower(email) = lower('carla.mendoza@remaxpotosi.bo')
+	limit 1;
+
+	select id into v_visita
+	from public.visitas
+	where vendedor_id = v_vendedor
+	limit 1;
+
+	if v_visita is null then
+		raise exception 'El vendedor demo no tiene visitas para probar.';
+	end if;
+
+	perform set_config('request.jwt.claim.sub', v_vendedor::text, true);
+	perform set_config(
+		'request.jwt.claims',
+		json_build_object('sub', v_vendedor, 'role', 'authenticated')::text,
+		true
+	);
+
+	begin
+		update public.visitas
+		set fecha_hora = fecha_hora + interval '1 hour'
+		where id = v_visita;
+		raise exception 'El vendedor pudo reprogramar una visita.';
+	exception
+		when insufficient_privilege then
+			null;
+	end;
+
+	begin
+		update public.visitas
+		set vendedor_id = null
+		where id = v_visita;
+		raise exception 'El vendedor pudo quitarse una visita asignada.';
+	exception
+		when insufficient_privilege then
+			null;
+	end;
+
+	raise notice 'OK 7/9 · visitas: vendedor no reprograma ni reasigna';
+end
+$$;
+
+rollback to savepoint visitas_vendedor;
+
+-- ============================================================================
+-- 8. Landing pública: agregados y equipo sin abrir tablas privadas
+-- ============================================================================
+savepoint resumen_publico;
+
+do $$
+declare
+	v_resumen record;
+	v_agentes integer;
+begin
+	select * into v_resumen from public.resumen_publico();
+	v_agentes := (select count(*) from public.listar_agentes_publicos());
+
+	if v_resumen.inmuebles_disponibles < 1
+		or v_resumen.agentes_activos < 1
+		or v_resumen.zonas_activas < 1
+		or v_resumen.contratos_gestionados < 1
+	then
+		raise exception 'resumen_publico() devolvió ceros: %', row_to_json(v_resumen);
+	end if;
+
+	if v_agentes < 1 then
+		raise exception 'listar_agentes_publicos() no devolvió agentes.';
+	end if;
+
+	raise notice 'OK 8/9 · landing pública con agregados reales';
+end
+$$;
+
+rollback to savepoint resumen_publico;
+
+-- ============================================================================
+-- 9. Storage de inmuebles: escritura limitada al agente del inmueble
+-- ============================================================================
+savepoint storage_inmuebles;
+
+do $$
+declare
+	v_vendedor uuid;
+	v_inmueble uuid;
+begin
+	select perfil_id into v_vendedor
+	from public.vendedores
+	limit 1;
+
+	select id into v_inmueble
+	from public.inmuebles
+	where agente_id = v_vendedor
+	limit 1;
+
+	if v_inmueble is null then
+		raise exception 'El vendedor demo no tiene inmuebles asignados.';
+	end if;
+
+	perform set_config('request.jwt.claim.sub', v_vendedor::text, true);
+	perform set_config(
+		'request.jwt.claims',
+		json_build_object('sub', v_vendedor, 'role', 'authenticated')::text,
+		true
+	);
+
+	if not public.es_agente_de_archivo_inmueble(v_inmueble::text || '/foto.png') then
+		raise exception 'El agente no pudo escribir en la carpeta de su inmueble.';
+	end if;
+
+	if public.es_agente_de_archivo_inmueble(
+		'00000000-0000-4000-8000-000000000000/foto.png'
+	) then
+		raise exception 'El agente pudo escribir en un inmueble ajeno o inexistente.';
+	end if;
+
+	raise notice 'OK 9/9 · Storage de inmuebles limitado al agente';
+end
+$$;
+
+rollback to savepoint storage_inmuebles;
 
 -- Deja la base como estaba.
 rollback;

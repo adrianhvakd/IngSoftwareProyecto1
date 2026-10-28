@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteRouteImport } from './routes/admin/route'
+import { Route as CambiarPasswordRouteImport } from './routes/cambiar-password'
 import { Route as ClienteRouteRouteImport } from './routes/cliente/route'
 import { Route as IngresarRouteImport } from './routes/ingresar'
 import { Route as RegistroRouteImport } from './routes/registro'
@@ -43,6 +44,11 @@ const IndexRoute = IndexRouteImport.update({
 const AdminRouteRoute = AdminRouteRouteImport.update({
   id: '/admin',
   path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CambiarPasswordRoute = CambiarPasswordRouteImport.update({
+  id: '/cambiar-password',
+  path: '/cambiar-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ClienteRouteRoute = ClienteRouteRouteImport.update({
@@ -166,6 +172,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteRouteWithChildren
   '/cliente': typeof ClienteRouteRouteWithChildren
   '/vendedor': typeof VendedorRouteRouteWithChildren
+  '/cambiar-password': typeof CambiarPasswordRoute
   '/ingresar': typeof IngresarRoute
   '/registro': typeof RegistroRoute
   '/admin/proveedores': typeof AdminProveedoresRoute
@@ -190,6 +197,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/cambiar-password': typeof CambiarPasswordRoute
   '/ingresar': typeof IngresarRoute
   '/registro': typeof RegistroRoute
   '/admin/proveedores': typeof AdminProveedoresRoute
@@ -218,6 +226,7 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteRouteWithChildren
   '/cliente': typeof ClienteRouteRouteWithChildren
   '/vendedor': typeof VendedorRouteRouteWithChildren
+  '/cambiar-password': typeof CambiarPasswordRoute
   '/ingresar': typeof IngresarRoute
   '/registro': typeof RegistroRoute
   '/admin/proveedores': typeof AdminProveedoresRoute
@@ -247,6 +256,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/cliente'
     | '/vendedor'
+    | '/cambiar-password'
     | '/ingresar'
     | '/registro'
     | '/admin/proveedores'
@@ -271,6 +281,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/cambiar-password'
     | '/ingresar'
     | '/registro'
     | '/admin/proveedores'
@@ -298,6 +309,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/cliente'
     | '/vendedor'
+    | '/cambiar-password'
     | '/ingresar'
     | '/registro'
     | '/admin/proveedores'
@@ -326,6 +338,7 @@ export interface RootRouteChildren {
   AdminRouteRoute: typeof AdminRouteRouteWithChildren
   ClienteRouteRoute: typeof ClienteRouteRouteWithChildren
   VendedorRouteRoute: typeof VendedorRouteRouteWithChildren
+  CambiarPasswordRoute: typeof CambiarPasswordRoute
   IngresarRoute: typeof IngresarRoute
   RegistroRoute: typeof RegistroRoute
   PropiedadesIdRoute: typeof PropiedadesIdRoute
@@ -346,6 +359,13 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AdminRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cambiar-password': {
+      id: '/cambiar-password'
+      path: '/cambiar-password'
+      fullPath: '/cambiar-password'
+      preLoaderRoute: typeof CambiarPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/cliente': {
@@ -581,6 +601,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRouteRoute: AdminRouteRouteWithChildren,
   ClienteRouteRoute: ClienteRouteRouteWithChildren,
   VendedorRouteRoute: VendedorRouteRouteWithChildren,
+  CambiarPasswordRoute: CambiarPasswordRoute,
   IngresarRoute: IngresarRoute,
   RegistroRoute: RegistroRoute,
   PropiedadesIdRoute: PropiedadesIdRoute,

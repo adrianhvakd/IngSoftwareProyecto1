@@ -51,9 +51,10 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { proveedores as proveedoresIniciales } from "@/data/proveedores";
-import type { Inmueble, InmuebleEstado, Proveedor } from "@/data/types";
 import { TIPOS_INMUEBLE } from "@/lib/catalog";
+import { crearProveedor as crearProveedorAdmin } from "@/server/admin/proveedores";
+import type { InmuebleAdmin, OpcionProveedorAdmin } from "@/types/admin";
+import type { InmuebleEstado } from "@/types/models";
 
 const AMENIDADES = [
 	"Patio interior",
@@ -79,12 +80,17 @@ interface ImagenPreview {
 	id: string;
 	nombre: string;
 	url: string;
+	file?: File;
+	path?: string | null;
+	existingId?: string;
 }
 
 interface InmuebleFormProps {
 	/** Inmueble a editar. Si se omite, el formulario crea uno nuevo. */
-	inmueble?: Inmueble;
-	onGuardar: (publicar: boolean, datos: DatosInmueble) => void;
+	inmueble?: InmuebleAdmin;
+	proveedores: OpcionProveedorAdmin[];
+	guardando?: boolean;
+	onGuardar: (publicar: boolean, datos: DatosInmueble) => Promise<void>;
 }
 
 export interface DatosInmueble {
@@ -106,22 +112,40 @@ export interface DatosInmueble {
 	disponibleDesde: string;
 	destacado: boolean;
 	amenidades: string[];
+	imagenes: ImagenPreview[];
 }
 
-export function InmuebleForm({ inmueble, onGuardar }: InmuebleFormProps) {
+function fechaParaInput(valor?: string): string {
+	if (!valor) return new Date().toISOString().slice(0, 10);
+	const fecha = new Date(valor);
+	if (Number.isNaN(fecha.getTime()))
+		return new Date().toISOString().slice(0, 10);
+	return new Intl.DateTimeFormat("en-CA", {
+		timeZone: "America/La_Paz",
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+	}).format(fecha);
+}
+
+export function InmuebleForm({
+	inmueble,
+	proveedores,
+	guardando = false,
+	onGuardar,
+}: InmuebleFormProps) {
 	const navigate = useNavigate();
 	const inputArchivos = useRef<HTMLInputElement>(null);
 	const editando = Boolean(inmueble);
 
-	const [listaProveedores, setListaProveedores] =
-		useState<Proveedor[]>(proveedoresIniciales);
+	const [listaProveedores, setListaProveedores] = useState(proveedores);
 
 	const [titulo, setTitulo] = useState(inmueble?.titulo ?? "");
 	const [tipo, setTipo] = useState<string>(inmueble?.tipo ?? "Departamento");
 	const [estado, setEstado] = useState<InmuebleEstado>(
 		inmueble?.estado ?? "Disponible",
 	);
-	const [zona, setZona] = useState(inmueble?.zona ?? "Centro histórico");
+	const [zona, setZona] = useState(inmueble?.zona ?? "");
 	const [direccion, setDireccion] = useState(inmueble?.direccion ?? "");
 	const [m2, setM2] = useState(inmueble ? String(inmueble.m2) : "");
 	const [habitaciones, setHabitaciones] = useState(
@@ -139,20 +163,35 @@ export function InmuebleForm({ inmueble, onGuardar }: InmuebleFormProps) {
 	const [amoblado, setAmoblado] = useState(inmueble?.amoblado ?? false);
 	const [descripcion, setDescripcion] = useState(inmueble?.descripcion ?? "");
 	const [proveedorId, setProveedorId] = useState(
-		inmueble?.proveedorId ?? proveedoresIniciales[0].id,
+		inmueble?.proveedorId ?? proveedores[0]?.id ?? "",
 	);
 	const [precio, setPrecio] = useState(inmueble ? String(inmueble.precio) : "");
 	const [costoPublicacion, setCostoPublicacion] = useState(
 		inmueble ? String(inmueble.costoPublicacion) : "300",
 	);
 	const [disponibleDesde, setDisponibleDesde] = useState(
-		inmueble?.fechaDisponibilidad ?? "2026-11-01",
+		fechaParaInput(inmueble?.fechaDisponibilidad),
 	);
 	const [destacado, setDestacado] = useState(inmueble?.destacado ?? false);
 	const [amenidades, setAmenidades] = useState<string[]>(
 		inmueble?.amenidades ?? [],
 	);
-	const [imagenes, setImagenes] = useState<ImagenPreview[]>([]);
+	const [imagenes, setImagenes] = useState<ImagenPreview[]>(
+		(inmueble?.imagenesDetalle ?? [])
+			.filter((imagen) => Boolean(imagen.url))
+			.map((imagen, indice) => ({
+				id: imagen.id || `${imagen.url ?? "foto"}-${indice}`,
+				existingId:
+					/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+						imagen.id,
+					)
+						? imagen.id
+						: undefined,
+				nombre: imagen.alt?.trim() || "Foto del inmueble",
+				url: imagen.url ?? "",
+				path: imagen.path,
+			})),
+	);
 	const [arrastrando, setArrastrando] = useState(false);
 
 	// Alta rápida de proveedor desde el EntityPicker.
@@ -174,6 +213,7 @@ export function InmuebleForm({ inmueble, onGuardar }: InmuebleFormProps) {
 			id: `${file.name}-${file.size}-${Math.random().toString(36).slice(2, 7)}`,
 			nombre: file.name,
 			url: URL.createObjectURL(file),
+			file,
 		}));
 		setImagenes((prev) => [...prev, ...nuevas]);
 		toast.success("Imágenes agregadas", {
@@ -190,13 +230,20 @@ export function InmuebleForm({ inmueble, onGuardar }: InmuebleFormProps) {
 	}
 
 	function guardar(publicar: boolean) {
-		if (!titulo.trim() || !direccion.trim() || !precio.trim()) {
+		if (guardando) return;
+		if (!titulo.trim() || !direccion.trim() || !precio.trim() || !zona) {
 			toast.error("Faltan datos obligatorios", {
-				description: "Completa título, dirección y precio de alquiler.",
+				description: "Completa título, zona, dirección y precio de alquiler.",
 			});
 			return;
 		}
-		onGuardar(publicar, {
+		if (!proveedorId) {
+			toast.error("Selecciona un proveedor", {
+				description: "El inmueble debe tener un propietario registrado.",
+			});
+			return;
+		}
+		void onGuardar(publicar, {
 			titulo,
 			tipo,
 			estado,
@@ -215,32 +262,62 @@ export function InmuebleForm({ inmueble, onGuardar }: InmuebleFormProps) {
 			disponibleDesde,
 			destacado,
 			amenidades,
+			imagenes,
 		});
 	}
 
-	function crearProveedor() {
+	async function crearProveedor() {
 		if (!npNombre.trim()) {
 			toast.error("Indica el nombre del proveedor");
 			return;
 		}
-		const nuevo: Proveedor = {
-			id: `prv-${String(listaProveedores.length + 1).padStart(3, "0")}`,
-			nombre: npNombre,
-			tipo: "Persona",
-			telefono: npTelefono,
-			ciudad: "Potosí",
-			zonaPrincipal: npZona || zona,
-			estado: "Activo",
-			desde: "2026-10-19",
-		};
-		setListaProveedores((prev) => [...prev, nuevo]);
-		setProveedorId(nuevo.id);
-		setNpNombre("");
-		setNpTelefono("+591 ");
-		setNpZona("");
-		toast.success("Proveedor registrado", {
-			description: `${nuevo.nombre} quedó seleccionado para este inmueble.`,
-		});
+		const zonaPrincipal = npZona || zona;
+		if (!zonaPrincipal) {
+			toast.error("Indica la zona del proveedor");
+			return;
+		}
+
+		try {
+			const resultado = await crearProveedorAdmin({
+				data: {
+					nombre: npNombre.trim(),
+					tipo: "Persona",
+					telefono: npTelefono.trim() || undefined,
+					ciudad: "Potosí",
+					zonaPrincipal,
+					estado: "Activo",
+				},
+			});
+
+			if (!resultado.ok) {
+				toast.error("No se pudo registrar el proveedor", {
+					description: resultado.error,
+				});
+				return;
+			}
+
+			const nuevo: OpcionProveedorAdmin = {
+				id: resultado.proveedor.id,
+				nombre: resultado.proveedor.nombre,
+				tipo: resultado.proveedor.tipo,
+				zonaPrincipal: resultado.proveedor.zonaPrincipal,
+				telefono: resultado.proveedor.telefono,
+				email: resultado.proveedor.email,
+			};
+			setListaProveedores((prev) => [...prev, nuevo]);
+			setProveedorId(nuevo.id);
+			setNpNombre("");
+			setNpTelefono("+591 ");
+			setNpZona("");
+			toast.success("Proveedor registrado", {
+				description: `${nuevo.nombre} quedó seleccionado para este inmueble.`,
+			});
+		} catch (error) {
+			toast.error("No se pudo registrar el proveedor", {
+				description:
+					error instanceof Error ? error.message : "Inténtalo de nuevo.",
+			});
+		}
 	}
 
 	return (
@@ -651,8 +728,9 @@ export function InmuebleForm({ inmueble, onGuardar }: InmuebleFormProps) {
 												<Button
 													variant="default"
 													onClick={() => {
-														crearProveedor();
-														onOpenChange(false);
+														void crearProveedor().then(() =>
+															onOpenChange(false),
+														);
 													}}
 												>
 													<Plus aria-hidden="true" />
@@ -743,20 +821,30 @@ export function InmuebleForm({ inmueble, onGuardar }: InmuebleFormProps) {
 						{imagenes.length > 0
 							? `${imagenes.length} imagen(es) cargada(s) · `
 							: ""}
-						Los datos no se envían a ningún servidor (prototipo).
+						Los datos se guardan en Supabase y las fotos en el bucket
+						`inmuebles`.
 					</p>
 					<Button
 						variant="outline"
+						disabled={guardando}
 						onClick={() => void navigate({ to: "/admin/inmuebles" })}
 					>
 						Cancelar
 					</Button>
-					<Button variant="secondary" onClick={() => guardar(false)}>
-						Guardar borrador
+					<Button
+						variant="secondary"
+						disabled={guardando}
+						onClick={() => guardar(false)}
+					>
+						{editando ? "Guardar sin cambiar estado" : "Guardar borrador"}
 					</Button>
-					<Button variant="cta" onClick={() => guardar(true)}>
+					<Button
+						variant="cta"
+						disabled={guardando}
+						onClick={() => guardar(true)}
+					>
 						<Check aria-hidden="true" />
-						{editando ? "Guardar cambios" : "Publicar inmueble"}
+						{editando ? "Guardar y aplicar estado" : "Publicar inmueble"}
 					</Button>
 				</div>
 			</div>

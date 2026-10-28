@@ -2,23 +2,22 @@
  * Alta de usuarios con contraseña temporal.
  *
  * ⚠️ SOLO SERVIDOR. La creación de usuarios con contraseña no se puede hacer
- * con SQL: requiere la Admin API de Supabase y la SERVICE ROLE. Estas server
- * functions se dejan listas y documentadas, pero **todavía no están conectadas
- * a ninguna pantalla** (eso llega en un entregable posterior).
+ * con SQL: requiere la Admin API de Supabase y la SERVICE ROLE.
  *
  * Flujo:
- *   1. Se valida el JWT del solicitante contra Supabase Auth.
- *   2. Se lee su perfil y se comprueba el rol (admin, o vendedor solo clientes).
- *   3. Se genera una contraseña aleatoria con Web Crypto.
- *   4. `auth.admin.createUser` crea el usuario con `app_metadata.rol` y la
+ *   1. Se valida la sesión del solicitante con el cliente de cookies y se lee
+ *      su perfil (admin, o vendedor solo clientes).
+ *   2. Se genera una contraseña aleatoria con Web Crypto si el formulario no
+ *      envía una.
+ *   3. `auth.admin.createUser` crea el usuario con `app_metadata.rol` y la
  *      marca `creado_por_backend = true`; el trigger handle_new_user crea el
  *      perfil con el rol correcto.
- *   5. Se crea la fila de vendedor o se completa la de cliente.
- *   6. Se devuelve la contraseña UNA SOLA VEZ. No se guarda ni se registra.
+ *   4. Se crea la fila de vendedor o se completa la de cliente.
+ *   5. Se devuelve la contraseña UNA SOLA VEZ. No se guarda ni se registra.
  */
 import { createServerFn } from "@tanstack/react-start";
-import { getRequestHeader } from "@tanstack/react-start/server";
 import { z } from "zod";
+import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "./supabase-admin";
 
 type Rol = "administrador" | "vendedor" | "cliente";
@@ -82,33 +81,25 @@ export function generarPasswordTemporal(longitud = 16): string {
 /* --------------------------- Autorización ------------------------------- */
 
 /**
- * Valida el Bearer token del request y devuelve el perfil activo.
- * La comprobación se hace con la service role, por lo que no depende de RLS.
+ * Valida la sesión del request con el cliente de cookies y devuelve el perfil
+ * activo. La lectura de `perfiles` queda sujeta a RLS; la escritura posterior
+ * usa la service role solo para la Admin API de Auth.
  */
 async function requireActor(): Promise<Actor> {
-	const authorization = getRequestHeader("authorization");
+	const supabase = getSupabaseServer();
+	const {
+		data: { user },
+		error,
+	} = await supabase.auth.getUser();
 
-	if (!authorization?.startsWith("Bearer ")) {
+	if (error || !user) {
 		throw new Error("Debes iniciar sesión para crear usuarios.");
 	}
 
-	const token = authorization.slice("Bearer ".length).trim();
-
-	if (!token) {
-		throw new Error("Token de sesión vacío.");
-	}
-
-	const admin = getSupabaseAdmin();
-	const { data: authData, error: authError } = await admin.auth.getUser(token);
-
-	if (authError || !authData.user) {
-		throw new Error("Sesión inválida o expirada.");
-	}
-
-	const { data: perfil, error: perfilError } = await admin
+	const { data: perfil, error: perfilError } = await supabase
 		.from("perfiles")
 		.select("id, rol, activo")
-		.eq("id", authData.user.id)
+		.eq("id", user.id)
 		.maybeSingle();
 
 	if (perfilError) {
@@ -138,6 +129,7 @@ interface DatosAlta {
 	comisionFija?: number;
 	cargo?: string;
 	zonaPrincipalId?: string;
+	password?: string;
 }
 
 async function crearUsuarioConPassword(
@@ -145,7 +137,7 @@ async function crearUsuarioConPassword(
 ): Promise<UsuarioCreado> {
 	const admin = getSupabaseAdmin();
 	const correo = datos.correo.trim().toLowerCase();
-	const password = generarPasswordTemporal();
+	const password = datos.password?.trim() || generarPasswordTemporal();
 
 	const { data: creado, error: createError } =
 		await admin.auth.admin.createUser({
@@ -243,6 +235,8 @@ const vendedorSchema = z.object({
 	comisionFija: z.number().min(0).max(1_000_000),
 	cargo: z.string().trim().max(120).optional(),
 	zonaPrincipalId: z.string().uuid().optional(),
+	zonaNombre: z.string().trim().max(120).optional(),
+	password: z.string().trim().min(12).max(72).optional(),
 });
 
 const clienteSchema = z.object({
@@ -252,6 +246,7 @@ const clienteSchema = z.object({
 	telefono: z.string().trim().max(30).optional(),
 	correo: z.string().trim().email(),
 	direccion: z.string().trim().max(240).optional(),
+	password: z.string().trim().min(12).max(72).optional(),
 });
 
 export const crearUsuarioVendedor = createServerFn({ method: "POST" })
@@ -263,6 +258,26 @@ export const crearUsuarioVendedor = createServerFn({ method: "POST" })
 			throw new Error("Solo un administrador puede crear vendedores.");
 		}
 
+		let zonaPrincipalId = data.zonaPrincipalId;
+		if (!zonaPrincipalId && data.zonaNombre) {
+			const admin = getSupabaseAdmin();
+			const { data: zona, error } = await admin
+				.from("zonas")
+				.select("id")
+				.eq("nombre", data.zonaNombre)
+				.order("activo", { ascending: false })
+				.limit(1)
+				.maybeSingle();
+
+			if (error) {
+				throw new Error(`No se pudo resolver la zona: ${error.message}`);
+			}
+			if (!zona) {
+				throw new Error(`La zona «${data.zonaNombre}» no existe.`);
+			}
+			zonaPrincipalId = zona.id;
+		}
+
 		return crearUsuarioConPassword({
 			rol: "vendedor",
 			nombres: data.nombres,
@@ -272,7 +287,8 @@ export const crearUsuarioVendedor = createServerFn({ method: "POST" })
 			correo: data.correo,
 			comisionFija: data.comisionFija,
 			cargo: data.cargo,
-			zonaPrincipalId: data.zonaPrincipalId,
+			zonaPrincipalId,
+			password: data.password,
 		});
 	});
 
@@ -293,5 +309,6 @@ export const crearUsuarioCliente = createServerFn({ method: "POST" })
 			telefono: data.telefono,
 			correo: data.correo,
 			direccion: data.direccion,
+			password: data.password,
 		});
 	});

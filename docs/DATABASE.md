@@ -1,7 +1,7 @@
 # Base de datos — RE/MAX Potosí
 
-Última actualización: 2026-10-23. Fuente de verdad:
-`supabase/migrations/0001…0007`. No editar migraciones aplicadas.
+Última actualización: 2026-10-28. Fuente de verdad:
+`supabase/migrations/0001…0010`. No editar migraciones aplicadas.
 
 ## 1. Modelo entidad-relación
 
@@ -123,6 +123,9 @@ para dinero, `created_at/updated_at` y trigger `set_updated_at`.
 | `es_agente_de_inmueble(uuid)` | `inmuebles.agente_id = auth.uid()`. |
 | `nombre_persona(uuid)`, `nombre_agente(uuid)`, `nombre_proveedor(uuid)` | Nombres para vistas sin exponer contacto. |
 | `alquiler_id_de_archivo(text)` | Extrae UUID de la primera carpeta de Storage. |
+| `inmueble_id_de_archivo(text)` | Extrae UUID del inmueble de la carpeta de fotos. |
+| `es_agente_de_archivo_inmueble(text)` | Valida escritura de fotos del agente asignado. |
+| `proteger_campos_visita()` | Trigger: cliente/vendedor solo cambian el estado permitido. |
 | `puede_ver_archivo_alquiler(text)` | Lectura de contrato/comprobante. |
 | `puede_subir_archivo_alquiler(text)` | Alta admin/vendedor, incluso antes del contrato. |
 | `puede_editar_archivo_alquiler(text)` | Edición/borrado admin o vendedor asignado. |
@@ -226,5 +229,6 @@ No hay `supabase/config.toml` en este repositorio; si se usa CLI local, primero
 ### Orden de dependencias
 
 `0001 enums` → `0002 tablas` → `0003 funciones/triggers` → `0004 RLS` →
-`0005 Storage` → `0006 vistas` → `0007 cron`. El seed va después de crear los
-usuarios de Auth.
+`0005 Storage` → `0006 vistas` → `0007 cron` → `0008 password` →
+`0009 seguridad pública` → `0010 storage por agente`. El seed va después de
+crear los usuarios de Auth.

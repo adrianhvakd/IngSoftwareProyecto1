@@ -18,10 +18,10 @@ import {
 	SheetHeader,
 	SheetTitle,
 } from "@/components/ui/sheet";
-import type { Inmueble } from "@/data/types";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { TIPOS_INMUEBLE, ZONAS } from "@/lib/catalog";
+import { TIPOS_INMUEBLE } from "@/lib/catalog";
 import { formatBsMes } from "@/lib/format";
+import type { Inmueble } from "@/types/models";
 
 interface PropertyPickerProps {
 	inmuebles: Inmueble[];
@@ -43,6 +43,13 @@ export function PropertyPicker({
 	disabled,
 	incluirNoDisponibles = false,
 }: PropertyPickerProps) {
+	const zonasDisponibles = useMemo(
+		() =>
+			[...new Set(inmuebles.map((inmueble) => inmueble.zona))].sort((a, b) =>
+				a.localeCompare(b, "es"),
+			),
+		[inmuebles],
+	);
 	const isMobile = useIsMobile();
 	const [open, setOpen] = useState(false);
 	const [query, setQuery] = useState("");
@@ -139,7 +146,7 @@ export function PropertyPicker({
 					>
 						Todas las zonas
 					</button>
-					{ZONAS.map((z) => (
+					{zonasDisponibles.map((z) => (
 						<button
 							key={z}
 							type="button"

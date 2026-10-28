@@ -1,14 +1,18 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
+	createFileRoute,
+	Link,
+	redirect,
+	useRouter,
+} from "@tanstack/react-router";
+import {
+	AlertCircle,
 	Building2,
 	Eye,
 	EyeOff,
+	Loader2,
 	Lock,
 	LogIn,
 	Mail,
-	ShieldCheck,
-	UserCog,
-	Users,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -17,9 +21,20 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
+import { nombreCompleto, rutaPanel } from "@/lib/auth";
+import { sitio } from "@/lib/site";
+import { iniciarSesion } from "@/server/auth";
 
 export const Route = createFileRoute("/ingresar")({
+	beforeLoad: ({ context }) => {
+		const sesion = context.sesion;
+		if (!sesion) return;
+		throw redirect({
+			to: sesion.debeCambiarPassword
+				? "/cambiar-password"
+				: rutaPanel(sesion.rol),
+		});
+	},
 	head: () => ({
 		meta: [
 			{ title: "Ingresar · RE/MAX Potosí" },
@@ -33,39 +48,22 @@ export const Route = createFileRoute("/ingresar")({
 	component: IngresarPage,
 });
 
-const accesosDemo = [
-	{
-		to: "/admin" as const,
-		label: "Panel administrador",
-		descripcion: "Inmuebles, usuarios, cobros y mora",
-		icono: <ShieldCheck className="size-4" aria-hidden="true" />,
-	},
-	{
-		to: "/vendedor" as const,
-		label: "Panel vendedor",
-		descripcion: "Visitas, cierres y comisiones",
-		icono: <UserCog className="size-4" aria-hidden="true" />,
-	},
-	{
-		to: "/cliente" as const,
-		label: "Panel cliente",
-		descripcion: "Mis visitas y mi alquiler",
-		icono: <Users className="size-4" aria-hidden="true" />,
-	},
-];
-
 function IngresarPage() {
-	const navigate = useNavigate();
+	const router = useRouter();
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
 	const [mostrar, setMostrar] = useState(false);
 	const [recordar, setRecordar] = useState(true);
+	const [enviando, setEnviando] = useState(false);
+	const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
 	const [errores, setErrores] = useState<{ email?: string; password?: string }>(
 		{},
 	);
 
-	function enviar(evento: React.FormEvent<HTMLFormElement>) {
+	async function enviar(evento: React.FormEvent<HTMLFormElement>) {
 		evento.preventDefault();
+		setErrorGeneral(null);
+
 		const nuevos: typeof errores = {};
 		if (!email.trim()) nuevos.email = "Ingresa tu correo electrónico.";
 		else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
@@ -76,10 +74,36 @@ function IngresarPage() {
 		setErrores(nuevos);
 		if (Object.keys(nuevos).length > 0) return;
 
-		toast.success("Sesión iniciada", {
-			description: "Bienvenido de nuevo. (Acción simulada)",
-		});
-		void navigate({ to: "/cliente" });
+		setEnviando(true);
+
+		try {
+			const resultado = await iniciarSesion({
+				data: { correo: email.trim(), password },
+			});
+
+			if (!resultado.ok) {
+				setErrorGeneral(resultado.error);
+				return;
+			}
+
+			const { sesion } = resultado;
+			toast.success("Sesión iniciada", {
+				description: `Bienvenido, ${nombreCompleto(sesion)}.`,
+			});
+
+			await router.invalidate();
+			await router.navigate({
+				to: sesion.debeCambiarPassword
+					? "/cambiar-password"
+					: rutaPanel(sesion.rol),
+			});
+		} catch {
+			setErrorGeneral(
+				"No se pudo iniciar sesión. Revisa tu conexión e inténtalo de nuevo.",
+			);
+		} finally {
+			setEnviando(false);
+		}
 	}
 
 	return (
@@ -88,6 +112,19 @@ function IngresarPage() {
 			subtitle="Gestiona tus visitas, contratos y pagos de alquiler."
 		>
 			<form onSubmit={enviar} className="grid gap-5" noValidate>
+				{errorGeneral ? (
+					<div
+						role="alert"
+						className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm text-destructive"
+					>
+						<AlertCircle
+							className="mt-0.5 size-4 shrink-0"
+							aria-hidden="true"
+						/>
+						<p>{errorGeneral}</p>
+					</div>
+				) : null}
+
 				<div className="grid gap-1.5">
 					<Label htmlFor="login-email">Correo electrónico</Label>
 					<div className="relative">
@@ -120,18 +157,12 @@ function IngresarPage() {
 				<div className="grid gap-1.5">
 					<div className="flex items-center justify-between">
 						<Label htmlFor="login-password">Contraseña</Label>
-						<button
-							type="button"
-							onClick={() =>
-								toast.info("Recuperar contraseña", {
-									description:
-										"Te enviaríamos un enlace al correo registrado. (Simulación)",
-								})
-							}
+						<a
+							href={`mailto:${sitio.email}?subject=${encodeURIComponent("Recuperar contraseña")}`}
 							className="text-xs font-medium text-primary hover:underline"
 						>
 							¿Olvidaste tu contraseña?
-						</button>
+						</a>
 					</div>
 					<div className="relative">
 						<Lock
@@ -185,9 +216,13 @@ function IngresarPage() {
 					</Label>
 				</div>
 
-				<Button type="submit" size="lg" className="w-full">
-					<LogIn aria-hidden="true" />
-					Ingresar
+				<Button type="submit" size="lg" className="w-full" disabled={enviando}>
+					{enviando ? (
+						<Loader2 className="animate-spin" aria-hidden="true" />
+					) : (
+						<LogIn aria-hidden="true" />
+					)}
+					{enviando ? "Ingresando…" : "Ingresar"}
 				</Button>
 			</form>
 
@@ -202,55 +237,17 @@ function IngresarPage() {
 			</p>
 
 			<div className="mt-8">
-				<div className="relative flex items-center gap-3">
-					<Separator className="flex-1" />
-					<span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-						Acceso demo
-					</span>
-					<Separator className="flex-1" />
-				</div>
-
-				<p className="mt-3 text-center text-xs text-muted-foreground">
-					Explora la plataforma con cada rol. No requiere credenciales.
-				</p>
-
-				<div className="mt-4 grid gap-2">
-					{accesosDemo.map((acceso) => (
-						<Button
-							key={acceso.to}
-							asChild
-							variant="outline"
-							className="h-auto justify-start py-3"
-						>
-							<Link to={acceso.to}>
-								<span className="grid size-8 shrink-0 place-items-center rounded-lg bg-blue-soft text-primary">
-									{acceso.icono}
-								</span>
-								<span className="flex flex-col items-start text-left">
-									<span className="font-semibold text-foreground">
-										{acceso.label}
-									</span>
-									<span className="text-xs font-normal text-muted-foreground">
-										{acceso.descripcion}
-									</span>
-								</span>
-							</Link>
-						</Button>
-					))}
-				</div>
-
 				<Button
+					asChild
 					variant="ghost"
-					className="mt-2 w-full text-muted-foreground"
-					onClick={() =>
-						toast.info("Publicar inmueble", {
-							description:
-								"El flujo de publicación para propietarios estará disponible al iniciar sesión. (Simulación)",
-						})
-					}
+					className="w-full text-muted-foreground"
 				>
-					<Building2 aria-hidden="true" />
-					Soy propietario y quiero publicar
+					<a
+						href={`mailto:${sitio.email}?subject=${encodeURIComponent("Quiero publicar mi inmueble")}`}
+					>
+						<Building2 aria-hidden="true" />
+						Soy propietario y quiero publicar
+					</a>
 				</Button>
 			</div>
 		</AuthLayout>
